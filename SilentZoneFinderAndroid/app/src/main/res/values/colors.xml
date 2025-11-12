@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="grey_light">#E0E0E0</color>
+    <color name="grey">#616161</color>
+    <color name="grey_dark">#1A1B20</color>
+    <color name="blue">#3B82F5</color>
+
+    <color name="library_quiet_color">#0dbb80</color>
+    <color name="quiet_conversation_color">#f99a12</color>
+    <color name="lively_chatter_color">#ef4444</color>
+    <color name="high_traffic_color">#dc2626</color>
+</resources>

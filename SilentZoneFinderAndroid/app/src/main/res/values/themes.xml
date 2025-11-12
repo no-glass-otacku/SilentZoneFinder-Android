@@ -1,0 +1,17 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.SilentZoneFinderAndroid" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:activityOpenEnterAnimation">@anim/fade_in_slow</item>
+        <item name="android:activityOpenExitAnimation">@anim/fade_out_slow</item>
+
+        <item name="android:activityCloseEnterAnimation">@anim/fade_in_slow</item>
+        <item name="android:activityCloseExitAnimation">@anim/fade_out_slow</item>
+    </style>
+    <style name="BottomNavNoHighlight" parent="Widget.MaterialComponents.BottomNavigationView">
+        <item name="itemBackground">@null</item>
+
+        <item name="itemRippleColor">@null</item>
+    </style>
+
+    <style name="Theme.SilentZoneFinderAndroid" parent="Base.Theme.SilentZoneFinderAndroid" />
+</resources>
