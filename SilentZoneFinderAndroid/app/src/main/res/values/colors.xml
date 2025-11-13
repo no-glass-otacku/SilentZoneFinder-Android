@@ -11,4 +11,7 @@
     <color name="quiet_conversation_color">#f99a12</color>
     <color name="lively_chatter_color">#ef4444</color>
     <color name="high_traffic_color">#dc2626</color>
+    <color name="green">#4CAF50</color>
+    <color name="light_grey">#E0E0E0</color>
+    <color name="red">#F44336</color>
 </resources>
