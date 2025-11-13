@@ -29,6 +29,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".LoginActivity"
+            android:exported="false"
+            android:label="로그인"
+            android:theme="@style/Theme.SilentZoneFinderAndroid" />
     </application>
+    <uses-permission android:name="android.permission.INTERNET" />
 
 </manifest>
