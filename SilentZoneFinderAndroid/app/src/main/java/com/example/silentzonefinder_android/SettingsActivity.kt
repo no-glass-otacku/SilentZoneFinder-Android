@@ -45,22 +45,6 @@ class SettingsActivity : AppCompatActivity() {
             true
         }
 
-        // 스위치 클릭 시 기본 토스트 (나중에 실제 설정 저장 로직 연결 가능)
-        binding.switchRecommendations.setOnCheckedChangeListener { _, isChecked ->
-            Toast.makeText(
-                this,
-                if (isChecked) "Quiet Zone 추천 알림이 켜졌습니다." else "Quiet Zone 추천 알림이 꺼졌습니다.",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-
-        binding.switchNoiseAlerts.setOnCheckedChangeListener { _, isChecked ->
-            Toast.makeText(
-                this,
-                if (isChecked) "소음 임계값 알림이 켜졌습니다." else "소음 임계값 알림이 꺼졌습니다.",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
 
         // 언어 / 테마 / 약관 / 개인정보 클릭 시 임시 토스트
         binding.rowLanguage.setOnClickListener {
