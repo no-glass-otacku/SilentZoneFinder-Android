@@ -6,6 +6,23 @@
         <item name="mapTextStrokeWidth">2</item>
         <item name="mapTextStrokeColor">#AA000000</item>
     </style>
+
+    <style name="SilentFilledButton" parent="Widget.MaterialComponents.Button">
+        <item name="cornerRadius">20dp</item>
+        <item name="android:insetLeft">0dp</item>
+        <item name="android:insetRight">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:backgroundTint">@color/blue</item>
+        <item name="android:textColor">@color/white</item>
+    </style>
+
+    <style name="MarkerLabelTextStyle" parent="LabelTextStyle">
+        <item name="mapTextSize">26</item>
+        <item name="mapTextColor">#FFFFFFFF</item>
+        <item name="mapTextStrokeWidth">3</item>
+        <item name="mapTextStrokeColor">#66000000</item>
+    </style>
 </resources>
 
 
