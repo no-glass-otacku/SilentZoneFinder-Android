@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 // local.properties에서 Supabase 키 읽기
@@ -30,6 +31,19 @@ android {
         val supabaseAnonKey = localProperties.getProperty("supabase.anon.key", "")
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
+        
+        // Kakao 환경 변수 (local.properties에서 읽기)
+        val kakaoRestApiKey = localProperties.getProperty("kakao.rest.api.key", "")
+        val kakaoNativeAppKey = localProperties.getProperty("kakao.native.app.key", "")
+        buildConfigField("String", "KAKAO_REST_API_KEY", "\"$kakaoRestApiKey\"")
+        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoNativeAppKey\"")
+        manifestPlaceholders["KAKAO_REST_API_KEY"] = kakaoRestApiKey
+        manifestPlaceholders["KAKAO_NATIVE_APP_KEY"] = kakaoNativeAppKey
+        
+        // NDK 아키텍처 필터 (카카오맵 SDK 네이티브 라이브러리 포함)
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+        }
     }
 
     buildTypes {
@@ -54,6 +68,12 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
 }
 
 dependencies {
@@ -63,6 +83,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
+    implementation(libs.androidx.recyclerview)
     
     // Supabase v3 (BOM + 개별 모듈)
     implementation(platform("io.github.jan-tennert.supabase:bom:3.0.1"))
@@ -79,6 +100,9 @@ dependencies {
     
     // Coroutines for lifecycleScope
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    
+    // Kakao Map SDK
+    implementation("com.kakao.maps.open:android:2.12.8")
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
