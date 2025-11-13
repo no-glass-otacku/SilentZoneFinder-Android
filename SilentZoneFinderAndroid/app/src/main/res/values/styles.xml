@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="KakaoLabelTextStyle" parent="LabelTextStyle">
+        <item name="mapTextSize">28</item>
+        <item name="mapTextColor">#FF1E88E5</item>
+        <item name="mapTextStrokeWidth">2</item>
+        <item name="mapTextStrokeColor">#AA000000</item>
+    </style>
+</resources>
+
+
