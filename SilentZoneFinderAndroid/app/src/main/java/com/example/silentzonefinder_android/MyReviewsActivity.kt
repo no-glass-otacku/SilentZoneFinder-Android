@@ -34,6 +34,12 @@ class MyReviewsActivity : AppCompatActivity() {
         binding.btnSort.setOnClickListener { view ->
             showSortMenu(view)
         }
+
+        // +New 버튼 (btnNewReview)에 리스너 설정
+        binding.btnNewReview.setOnClickListener {
+            val intent = Intent(this, NewReviewActivity::class.java)
+            startActivity(intent)
+        }
     }
     override fun onResume() {
         super.onResume()

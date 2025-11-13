@@ -13,16 +13,6 @@ class MyFavoritesActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMyFavoritesBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
-        // 상단 뒤로가기
-        binding.btnBack.setOnClickListener {
-            val intent = Intent(this, MainActivity::class.java)
-            // Stack을 꼬이지 않게: 새 액티비티로 이동
-            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            startActivity(intent)
-            finish()  // 현재 즐겨찾기 화면은 제거
-            overridePendingTransition(0, 0)
-        }
     }
 
     override fun onResume() {
