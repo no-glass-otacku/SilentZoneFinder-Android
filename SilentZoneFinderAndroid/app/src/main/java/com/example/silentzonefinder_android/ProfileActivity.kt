@@ -2,30 +2,38 @@ package com.example.silentzonefinder_android
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.silentzonefinder_android.databinding.ActivityProfileBinding
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
-import io.github.jan.supabase.auth.*
+
 import io.github.jan.supabase.exceptions.HttpRequestException
 import io.github.jan.supabase.exceptions.RestException
 import kotlinx.coroutines.launch
 import java.util.regex.Pattern
 
 class ProfileActivity : AppCompatActivity() {
+
     private lateinit var binding: ActivityProfileBinding
-    private val supabase: io.github.jan.supabase.SupabaseClient? by lazy {
+
+    // Supabase 클라이언트 (에러 나면 null 로 처리)
+    private val supabase: SupabaseClient? by lazy {
         try {
             SupabaseManager.client
-        } catch (e: IllegalStateException) {
-            android.util.Log.e("ProfileActivity", "Supabase 초기화 실패 (IllegalStateException)", e)
-            null
         } catch (e: Exception) {
-            android.util.Log.e("ProfileActivity", "Supabase 초기화 실패 (기타 예외)", e)
-            e.printStackTrace()
+            Log.e("ProfileActivity", "Supabase 초기화 실패", e)
             null
         }
+    }
+
+    // 간단한 로그인 상태 저장용 (이메일만 저장)
+    private val prefs by lazy {
+        getSharedPreferences("auth_prefs", MODE_PRIVATE)
     }
 
     companion object {
@@ -40,247 +48,253 @@ class ProfileActivity : AppCompatActivity() {
         binding = ActivityProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupLoginButtons()
-        checkLoginStatus()
+        setupBottomNavigation()
+        setupClickListeners()
     }
 
     override fun onResume() {
         super.onResume()
-        setupBottomNavigation()
         binding.bottomNavigation.selectedItemId = R.id.navigation_profile
         overridePendingTransition(0, 0)
-        
-        // 화면이 다시 나타날 때 로그인 상태 확인
+
+        // 저장된 로그인 정보 기준으로 UI 갱신
         checkLoginStatus()
     }
 
+    // -----------------------------
+    // UI 상태 전환
+    // -----------------------------
+    private fun showLoginLayout() {
+        binding.loginLayout.visibility = View.VISIBLE
+        binding.loggedInLayout.visibility = View.GONE
+    }
+
+    private fun showLoggedInLayout(name: String, email: String) {
+        binding.loginLayout.visibility = View.GONE
+        binding.loggedInLayout.visibility = View.VISIBLE
+
+        binding.textUserName.text = name
+        binding.textUserEmail.text = email
+
+        // 현재는 더미 숫자. 추후 실제 데이터로 바꾸면 됨
+        binding.textReviewCount.text = "12"
+        binding.textOptimalCount.text = "8"
+    }
+
     private fun checkLoginStatus() {
-        val client = supabase ?: return
-        
+        val email = prefs.getString("user_email", null)
+        if (email.isNullOrBlank()) {
+            showLoginLayout()
+        } else {
+            val name = email.substringBefore("@")
+            showLoggedInLayout(name, email)
+        }
+    }
+
+    // -----------------------------
+    // 클릭 리스너 묶음
+    // -----------------------------
+    private fun setupClickListeners() = with(binding) {
+
+        // 로그인 버튼
+        btnLogin.setOnClickListener {
+            val email = inputEmail.text.toString().trim()
+            val password = inputPassword.text.toString()
+
+            if (!isValidEmail(email) || !isValidPassword(password)) return@setOnClickListener
+
+            val client = supabase ?: run {
+                Toast.makeText(
+                    this@ProfileActivity,
+                    "Supabase가 설정되지 않았습니다.",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@setOnClickListener
+            }
+
+            lifecycleScope.launch {
+                try {
+                    client.auth.signInWith(Email) {
+                        this.email = email
+                        this.password = password
+                    }
+                    // 로그인 성공
+                    saveLoggedInUser(email)
+                    val name = email.substringBefore("@")
+                    showLoggedInLayout(name, email)
+                    Toast.makeText(this@ProfileActivity, "로그인되었습니다.", Toast.LENGTH_SHORT).show()
+                } catch (e: RestException) {
+                    Toast.makeText(
+                        this@ProfileActivity,
+                        "로그인 실패",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } catch (e: HttpRequestException) {
+                    Toast.makeText(
+                        this@ProfileActivity,
+                        "네트워크 오류로 로그인에 실패했습니다.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } catch (e: Exception) {
+                    Log.e("ProfileActivity", "login error", e)
+                    Toast.makeText(
+                        this@ProfileActivity,
+                        "알 수 없는 오류로 로그인에 실패했습니다.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+
+        // 회원가입 버튼
+        btnSignUp.setOnClickListener {
+            val email = inputEmail.text.toString().trim()
+            val password = inputPassword.text.toString()
+
+            if (!isValidEmail(email) || !isValidPassword(password)) return@setOnClickListener
+
+            val client = supabase ?: run {
+                Toast.makeText(
+                    this@ProfileActivity,
+                    "Supabase가 설정되지 않았습니다.",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@setOnClickListener
+            }
+
+            lifecycleScope.launch {
+                try {
+                    client.auth.signUpWith(Email) {
+                        this.email = email
+                        this.password = password
+                    }
+                    Toast.makeText(
+                        this@ProfileActivity,
+                        "회원가입 완료. 이메일로 전송된 안내를 확인하세요.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } catch (e: RestException) {
+                    Toast.makeText(
+                        this@ProfileActivity,
+                        "회원가입 실패",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } catch (e: HttpRequestException) {
+                    Toast.makeText(
+                        this@ProfileActivity,
+                        "네트워크 오류로 회원가입에 실패했습니다.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } catch (e: Exception) {
+                    Log.e("ProfileActivity", "signUp error", e)
+                    Toast.makeText(
+                        this@ProfileActivity,
+                        "알 수 없는 오류로 회원가입에 실패했습니다.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+
+        // 알림 토글
+        switchQuietAlert.setOnCheckedChangeListener { _, isChecked ->
+            val msg = if (isChecked) {
+                "조용한 존 추천 알림이 켜졌습니다."
+            } else {
+                "조용한 존 추천 알림이 꺼졌습니다."
+            }
+            Toast.makeText(this@ProfileActivity, msg, Toast.LENGTH_SHORT).show()
+        }
+
+        // 알림 히스토리 / 설정은 아직 화면 없으니 안내만
+        rowNotificationHistory.setOnClickListener {
+            val intent = Intent(this@ProfileActivity, NotificationHistoryActivity::class.java)
+            startActivity(intent)
+        }
+
+        rowSettings.setOnClickListener {
+            val intent = Intent(this@ProfileActivity, SettingsActivity::class.java)
+            startActivity(intent)
+        }
+
+
+        // Sign Out (텍스트)
+        textSignOut.setOnClickListener {
+            performLogout()
+        }
+
+
+    }
+
+    private fun performLogout() {
         lifecycleScope.launch {
             try {
-                val session = client.auth.currentSessionOrNull()
-                val user = session?.user
-                if (user != null) {
-                    // 로그인된 경우
-                    showLoggedInUI(user.email ?: "이메일 없음")
-                } else {
-                    // 로그인하지 않은 경우
-                    showLoginUI()
-                }
+                supabase?.auth?.signOut()
             } catch (e: Exception) {
-                android.util.Log.e("ProfileActivity", "로그인 상태 확인 실패", e)
-                showLoginUI()
+                Log.e("ProfileActivity", "signOut error", e)
+            } finally {
+                clearLoggedInUser()
+                showLoginLayout()
+                Toast.makeText(this@ProfileActivity, "로그아웃되었습니다.", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    private fun showLoginUI() {
-        binding.loginLayout.visibility = android.view.View.VISIBLE
-        binding.loggedInLayout.visibility = android.view.View.GONE
-    }
-
-    private fun showLoggedInUI(email: String) {
-        binding.loginLayout.visibility = android.view.View.GONE
-        binding.loggedInLayout.visibility = android.view.View.VISIBLE
-        binding.textUserEmail.text = "이메일: $email"
-    }
-
-    private fun setupLoginButtons() {
-        binding.btnSignUp.setOnClickListener {
-            val email = binding.inputEmail.text.toString().trim()
-            val password = binding.inputPassword.text.toString()
-            
-            if (!validateInput(email, password)) {
-                return@setOnClickListener
-            }
-            
-            lifecycleScope.launch { signUp(email, password) }
-        }
-
-        binding.btnLogin.setOnClickListener {
-            val email = binding.inputEmail.text.toString().trim()
-            val password = binding.inputPassword.text.toString()
-            
-            if (!validateInput(email, password)) {
-                return@setOnClickListener
-            }
-            
-            lifecycleScope.launch { login(email, password) }
-        }
-
-        binding.btnLogout.setOnClickListener {
-            lifecycleScope.launch { logout() }
-        }
-    }
-
-    private fun validateInput(email: String, password: String): Boolean {
-        if (email.isEmpty()) {
-            Toast.makeText(this, "이메일을 입력해주세요.", Toast.LENGTH_SHORT).show()
-            return false
-        }
-
+    // -----------------------------
+    // 유효성 검사 + 로그인 정보 저장
+    // -----------------------------
+    private fun isValidEmail(email: String): Boolean {
         if (!EMAIL_PATTERN.matcher(email).matches()) {
             Toast.makeText(this, "올바른 이메일 형식이 아닙니다.", Toast.LENGTH_SHORT).show()
             return false
         }
-
-        if (password.isEmpty()) {
-            Toast.makeText(this, "비밀번호를 입력해주세요.", Toast.LENGTH_SHORT).show()
-            return false
-        }
-
-        if (password.length < MIN_PASSWORD_LENGTH) {
-            Toast.makeText(this, "비밀번호는 최소 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.", Toast.LENGTH_SHORT).show()
-            return false
-        }
-
         return true
     }
 
-    private suspend fun signUp(email: String, password: String) {
-        val client = supabase ?: run {
-            Toast.makeText(this, "Supabase 연결이 설정되지 않았습니다.", Toast.LENGTH_SHORT).show()
-            return
+    private fun isValidPassword(password: String): Boolean {
+        if (password.length < MIN_PASSWORD_LENGTH) {
+            Toast.makeText(
+                this,
+                "비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return false
         }
-        
-        try {
-            android.util.Log.d("ProfileActivity", "회원가입 시도: $email")
-            client.auth.signUpWith(Email) {
-                this.email = email
-                this.password = password
-            }
-            
-            android.util.Log.d("ProfileActivity", "회원가입 성공")
-            Toast.makeText(this, "회원가입 완료! 이메일 인증이 필요합니다.", Toast.LENGTH_LONG).show()
-        } catch (e: HttpRequestException) {
-            val errorMessage = when {
-                e.message?.contains("400") == true || e.message?.contains("Bad Request") == true -> 
-                    "잘못된 요청입니다. 입력 정보를 확인해주세요."
-                e.message?.contains("409") == true || e.message?.contains("Conflict") == true -> 
-                    "이미 존재하는 이메일입니다."
-                e.message?.contains("422") == true || e.message?.contains("Unprocessable") == true -> 
-                    "입력 정보가 올바르지 않습니다."
-                else -> "회원가입에 실패했습니다: ${e.message ?: "알 수 없는 오류"}"
-            }
-            Toast.makeText(this, errorMessage, Toast.LENGTH_SHORT).show()
-        } catch (e: RestException) {
-            Toast.makeText(this, "서버 오류가 발생했습니다: ${e.message ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            val errorMsg = e.message ?: "알 수 없는 오류"
-            when {
-                errorMsg.contains("email") && errorMsg.contains("already") -> 
-                    "이미 존재하는 이메일입니다."
-                errorMsg.contains("password") -> 
-                    "비밀번호가 올바르지 않습니다."
-                else -> "회원가입에 실패했습니다: $errorMsg"
-            }.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
-        }
+        return true
     }
 
-    private suspend fun login(email: String, password: String) {
-        val client = supabase ?: run {
-            Toast.makeText(this, "Supabase 연결이 설정되지 않았습니다.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        try {
-            android.util.Log.d("ProfileActivity", "로그인 시도: $email")
-            client.auth.signInWith(Email) {
-                this.email = email
-                this.password = password
-            }
-            
-            android.util.Log.d("ProfileActivity", "로그인 성공")
-            Toast.makeText(this, "로그인 성공!", Toast.LENGTH_SHORT).show()
-            
-            // 로그인 성공 후 UI 업데이트
-            checkLoginStatus()
-            
-            // 입력 필드 초기화
-            binding.inputEmail.text.clear()
-            binding.inputPassword.text.clear()
-        } catch (e: HttpRequestException) {
-            android.util.Log.e("ProfileActivity", "로그인 실패 (HttpRequestException)", e)
-            
-            val errorMessage = when {
-                e.message?.contains("400") == true || e.message?.contains("Bad Request") == true -> 
-                    "이메일 또는 비밀번호가 올바르지 않습니다."
-                e.message?.contains("401") == true || e.message?.contains("Unauthorized") == true -> 
-                    "인증에 실패했습니다. 이메일과 비밀번호를 확인해주세요."
-                e.message?.contains("404") == true || e.message?.contains("Not Found") == true -> 
-                    "사용자를 찾을 수 없습니다."
-                e.message?.contains("Email not confirmed") == true || e.message?.contains("email_not_confirmed") == true ->
-                    "이메일 인증이 필요합니다. 이메일을 확인해주세요."
-                else -> "로그인에 실패했습니다: ${e.message ?: "알 수 없는 오류"}"
-            }
-            Toast.makeText(this, errorMessage, Toast.LENGTH_SHORT).show()
-        } catch (e: RestException) {
-            android.util.Log.e("ProfileActivity", "로그인 실패 (RestException)", e)
-            Toast.makeText(this, "서버 오류가 발생했습니다: ${e.message ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            android.util.Log.e("ProfileActivity", "로그인 실패 (Exception)", e)
-            
-            val errorMsg = e.message ?: "알 수 없는 오류"
-            val finalMessage = when {
-                errorMsg.contains("Invalid login") || (errorMsg.contains("email") && errorMsg.contains("password")) -> 
-                    "이메일 또는 비밀번호가 올바르지 않습니다."
-                errorMsg.contains("Email not confirmed") || errorMsg.contains("email_not_confirmed") ->
-                    "이메일 인증이 필요합니다. 이메일을 확인해주세요."
-                errorMsg.contains("User not found") -> 
-                    "사용자를 찾을 수 없습니다."
-                else -> "로그인에 실패했습니다: $errorMsg"
-            }
-            Toast.makeText(this, finalMessage, Toast.LENGTH_SHORT).show()
-        }
+    private fun saveLoggedInUser(email: String) {
+        prefs.edit().putString("user_email", email).apply()
     }
 
-    private suspend fun logout() {
-        val client = supabase ?: run {
-            Toast.makeText(this, "Supabase 연결이 설정되지 않았습니다.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        try {
-            android.util.Log.d("ProfileActivity", "로그아웃 시도")
-            client.auth.signOut()
-            
-            android.util.Log.d("ProfileActivity", "로그아웃 성공")
-            Toast.makeText(this, "로그아웃되었습니다.", Toast.LENGTH_SHORT).show()
-            
-            // 로그아웃 후 UI 업데이트
-            checkLoginStatus()
-        } catch (e: Exception) {
-            android.util.Log.e("ProfileActivity", "로그아웃 실패", e)
-            Toast.makeText(this, "로그아웃에 실패했습니다: ${e.message ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
-        }
+    private fun clearLoggedInUser() {
+        prefs.edit().clear().apply()
     }
 
+    // -----------------------------
+    // 하단 네비게이션
+    // -----------------------------
     private fun setupBottomNavigation() {
         binding.bottomNavigation.setOnItemSelectedListener { item ->
-            // 1. 이동할 Activity 클래스를 먼저 결정합니다.
             val targetActivity = when (item.itemId) {
                 R.id.navigation_map -> MainActivity::class.java
                 R.id.navigation_my_reviews -> MyReviewsActivity::class.java
                 R.id.navigation_my_favorite -> MyFavoritesActivity::class.java
                 R.id.navigation_profile -> {
+                    // 현재 화면
                     return@setOnItemSelectedListener true
                 }
-                else -> return@setOnItemSelectedListener false // 예상치 못한 ID
+                else -> return@setOnItemSelectedListener false
             }
 
-            // 2. 공통 로직을 한 번만 실행합니다.
             val intent = Intent(this, targetActivity)
-
-            // Activity 재활용 및 부드러운 전환을 위한 플래그
-            intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-
+            intent.addFlags(
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
             startActivity(intent)
-
-            // 3. 애니메이션 설정 (0, 0은 애니메이션 없음)
             overridePendingTransition(0, 0)
-
-            true // 이벤트 처리가 완료되었음을 반환
+            true
         }
     }
 }
