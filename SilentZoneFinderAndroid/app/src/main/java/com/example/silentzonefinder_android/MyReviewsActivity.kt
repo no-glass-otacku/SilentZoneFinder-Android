@@ -7,14 +7,14 @@ import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.example.silentzonefinder_android.adapter.ReviewAdapter
+import com.example.silentzonefinder_android.adapter.MyReviewsAdapter
 import com.example.silentzonefinder_android.data.Review
 import com.example.silentzonefinder_android.databinding.ActivityMyReviewsBinding
 
 class MyReviewsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMyReviewsBinding
-    private lateinit var reviewAdapter: ReviewAdapter
+    private lateinit var reviewAdapter: MyReviewsAdapter
     private val originalReviewList = mutableListOf<Review>() // 원본 데이터 리스트
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,7 +44,7 @@ class MyReviewsActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
-        reviewAdapter = ReviewAdapter(emptyList()) // 처음에는 빈 리스트로 어댑터 생성
+        reviewAdapter = MyReviewsAdapter(emptyList()) // 처음에는 빈 리스트로 어댑터 생성
         binding.recyclerViewReviews.apply {
             layoutManager = LinearLayoutManager(this@MyReviewsActivity)
             adapter = reviewAdapter
@@ -85,7 +85,8 @@ class MyReviewsActivity : AppCompatActivity() {
     }
 
     // sort 팝업 메뉴를 보여주는 함수
-    private fun showSortMenu(anchorView: View) {val popupMenu = PopupMenu(this, anchorView)
+    private fun showSortMenu(anchorView: View) {
+        val popupMenu = PopupMenu(this, anchorView)
 
         // 코드로 직접 메뉴 항목을 추가합니다.
         popupMenu.menu.add("Most Recent")
@@ -110,7 +111,7 @@ class MyReviewsActivity : AppCompatActivity() {
             "Highest Rating" -> {
                 originalReviewList.sortedByDescending { it.rating }
             }
-            "Quiet to Loud" -> {
+            "Optimal to Loud" -> {
                 // 조용한 순으로 정렬하려면 순서를 직접 지정해줘야 합니다.
                 val statusOrder = mapOf("Library Quiet" to 0, "Quiet Conversation" to 1, "Lively Chatter" to 2, "High Traffic" to 3)
                 originalReviewList.sortedBy { statusOrder[it.status] }

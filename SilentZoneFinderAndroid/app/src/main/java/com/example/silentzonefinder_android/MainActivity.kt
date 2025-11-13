@@ -1,15 +1,26 @@
 package com.example.silentzonefinder_android
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.widget.ArrayAdapter
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.silentzonefinder_android.databinding.ActivityMainBinding
 import com.example.silentzonefinder_android.adapter.PlaceSearchAdapter
+import com.example.silentzonefinder_android.PlaceDetailActivity
 import com.kakao.vectormap.KakaoMap
 import com.kakao.vectormap.KakaoMapReadyCallback
 import com.kakao.vectormap.LatLng
@@ -22,6 +33,15 @@ import com.kakao.vectormap.label.LabelStyle
 import com.kakao.vectormap.label.LabelStyles
 import com.kakao.vectormap.label.LabelTextBuilder
 import com.kakao.vectormap.label.LabelTextStyle
+import com.kakao.vectormap.mapwidget.InfoWindow
+import com.kakao.vectormap.mapwidget.InfoWindowLayer
+import com.kakao.vectormap.mapwidget.InfoWindowOptions
+import com.kakao.vectormap.mapwidget.component.GuiImage
+import com.kakao.vectormap.mapwidget.component.GuiLayout
+import com.kakao.vectormap.mapwidget.component.GuiText
+import com.kakao.vectormap.mapwidget.component.Horizontal
+import com.kakao.vectormap.mapwidget.component.Orientation
+import com.kakao.vectormap.mapwidget.component.Vertical
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.android.Android
@@ -40,10 +60,14 @@ class MainActivity : AppCompatActivity() {
     private var kakaoMap: KakaoMap? = null
     private lateinit var searchResultsAdapter: PlaceSearchAdapter
     private var categorySearchJob: Job? = null
-    private var categoryLayer: LabelLayer? = null
+    private var labelLayer: LabelLayer? = null
+    private var infoWindowLayer: InfoWindowLayer? = null
+    private var currentInfoWindow: InfoWindow? = null
     private val defaultLocation = LatLng.from(37.5665, 126.9780)
     private var lastKnownCenter: LatLng = defaultLocation
     private val currentCategoryLabelIds = mutableListOf<String>()
+    private val currentSampleLabelIds = mutableListOf<String>()
+    private var selectedPlaceLabelId: String? = null
     private val httpClient = HttpClient(Android) {
         install(ContentNegotiation) {
             json(Json {
@@ -62,6 +86,7 @@ class MainActivity : AppCompatActivity() {
         setupSearch()
         setupSearchResultsList()
         setupCategoryChips()
+        setupFilterDropdown()
     }
 
     override fun onResume() {
@@ -101,9 +126,38 @@ class MainActivity : AppCompatActivity() {
         val readyCallback = object : KakaoMapReadyCallback() {
             override fun onMapReady(map: KakaoMap) {
                 kakaoMap = map
-                categoryLayer = map.labelManager?.layer
+                labelLayer = map.labelManager?.layer
+                labelLayer?.setClickable(true)
+                infoWindowLayer = map.mapWidgetManager?.infoWindowLayer?.also { it.setVisible(true) }
+                map.setOnLabelClickListener { _, _, label ->
+                    when (val payload = label.tag) {
+                        is PlaceUiSample -> {
+                            openPlaceDetail(
+                                payload.kakaoPlaceId,
+                                payload.name,
+                                payload.address,
+                                getString(R.string.category_cafes)
+                            )
+                            true
+                        }
+                        is PlaceDocument -> {
+                            val address = payload.road_address_name.takeIf { it.isNotBlank() }
+                                ?: payload.address_name
+                            openPlaceDetail(
+                                payload.id,
+                                payload.place_name,
+                                address,
+                                payload.category_name
+                            )
+                            true
+                        }
+                        else -> false
+                    }
+                }
+                map.setOnMapClickListener { _, _, _, _ -> closeInfoWindow() }
                 lastKnownCenter = defaultLocation
                 android.util.Log.d("MainActivity", "Map is ready.")
+                renderSampleMarkers()
             }
 
             override fun getPosition(): LatLng {
@@ -137,14 +191,16 @@ class MainActivity : AppCompatActivity() {
         searchResultsAdapter = PlaceSearchAdapter { place ->
             moveMapToPlace(place)
             binding.categoryChipGroup.clearCheck()
-            showSearchResults(emptyList())
+            showSearchResults(emptyList(), showSamplesWhenEmpty = false)
+            val address = place.road_address_name.takeIf { it.isNotBlank() } ?: place.address_name
+            openPlaceDetail(place.id, place.place_name, address, place.category_name)
         }
         binding.searchResultsRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = searchResultsAdapter
-            isVisible = false
             setHasFixedSize(true)
         }
+        binding.searchResultsCard.isVisible = false
     }
 
     private fun setupCategoryChips() {
@@ -181,7 +237,7 @@ class MainActivity : AppCompatActivity() {
                     "${results.size} ${option.label.lowercase(Locale.US)} found nearby."
                 }
                 Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
-                showSearchResults(emptyList())
+                showSearchResults(emptyList(), showSamplesWhenEmpty = false)
             } catch (e: Exception) {
                 android.util.Log.e("MainActivity", "Category search failed", e)
                 Toast.makeText(this@MainActivity, "Category search failed: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -218,19 +274,30 @@ class MainActivity : AppCompatActivity() {
         return response.documents
     }
 
-    private fun showSearchResults(results: List<PlaceDocument>) {
+    private fun showSearchResults(
+        results: List<PlaceDocument>,
+        showSamplesWhenEmpty: Boolean = true
+    ) {
         searchResultsAdapter.submitList(results)
-        binding.searchResultsRecyclerView.isVisible = results.isNotEmpty()
-        if (results.isNotEmpty()) {
+        val hasResults = results.isNotEmpty()
+        binding.searchResultsCard.isVisible = hasResults
+        binding.searchResultsRecyclerView.isVisible = hasResults
+        if (hasResults) {
+            closeInfoWindow()
+            clearSampleMarkers()
             binding.searchResultsRecyclerView.scrollToPosition(0)
+        } else if (showSamplesWhenEmpty) {
+            renderSampleMarkers()
         }
     }
 
     private fun updateCategoryLabels(categoryLabel: String, places: List<PlaceDocument>) {
         val map = kakaoMap ?: return
         val labelManager = map.labelManager ?: return
-        val layer = categoryLayer ?: labelManager.layer?.also { categoryLayer = it } ?: return
+        val layer = obtainLabelLayer() ?: return
 
+        clearSampleMarkers()
+        closeInfoWindow()
         // Remove previously added labels.
         currentCategoryLabelIds.forEach { id ->
             layer.getLabel(id)?.let { layer.remove(it) }
@@ -240,6 +307,8 @@ class MainActivity : AppCompatActivity() {
         if (places.isEmpty()) {
             return
         }
+
+        clearSelectedPlaceMarker()
 
         val labelStyles = labelManager.addLabelStyles(
             LabelStyles.from(
@@ -274,6 +343,173 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun obtainLabelLayer(): LabelLayer? {
+        val map = kakaoMap ?: return null
+        val labelManager = map.labelManager ?: return null
+        return labelLayer ?: labelManager.layer?.also { labelLayer = it }
+    }
+
+    private fun clearSelectedPlaceMarker() {
+        val layer = obtainLabelLayer() ?: return
+        selectedPlaceLabelId?.let { id ->
+            layer.getLabel(id)?.let { layer.remove(it) }
+        }
+        selectedPlaceLabelId = null
+    }
+
+    private fun showSelectedPlaceMarker(place: PlaceDocument, position: LatLng) {
+        val map = kakaoMap ?: return
+        val labelManager = map.labelManager ?: return
+        val layer = obtainLabelLayer() ?: return
+
+        selectedPlaceLabelId?.let { id ->
+            layer.getLabel(id)?.let { layer.remove(it) }
+        }
+
+        val matchedSample = samplePlaces.firstOrNull { it.kakaoPlaceId == place.id }
+        val markerBitmap = matchedSample?.let { renderNoiseMarker(it) } ?: renderBasicMarker(place)
+
+        val labelStyles = labelManager.addLabelStyles(
+            LabelStyles.from(
+                LabelStyle.from(markerBitmap)
+                    .setAnchorPoint(0.5f, 1.0f)
+            )
+        )
+
+        val labelId = "selected_${place.id}_${System.currentTimeMillis()}"
+        val labelOptions = LabelOptions.from(labelId, position)
+            .setStyles(labelStyles)
+            .setClickable(true)
+            .setTag(place)
+
+        layer.addLabel(labelOptions)
+        selectedPlaceLabelId = labelId
+    }
+
+    private fun clearSampleMarkers() {
+        obtainLabelLayer()?.let { layer ->
+            currentSampleLabelIds.forEach { id ->
+                layer.getLabel(id)?.let { layer.remove(it) }
+            }
+        }
+        currentSampleLabelIds.clear()
+        closeInfoWindow()
+    }
+
+    private fun closeInfoWindow() {
+        currentInfoWindow?.let { window ->
+            window.remove()
+        }
+        currentInfoWindow = null
+    }
+
+    private fun renderSampleMarkers() {
+        val map = kakaoMap ?: return
+        val labelManager = map.labelManager ?: return
+        val layer = obtainLabelLayer() ?: return
+
+        clearSampleMarkers()
+
+        samplePlaces.forEach { place ->
+            val position = LatLng.from(place.latitude, place.longitude)
+            val markerBitmap = renderNoiseMarker(place)
+            val labelStyles = labelManager.addLabelStyles(
+                LabelStyles.from(
+                    LabelStyle.from(markerBitmap)
+                        .setAnchorPoint(0.5f, 1.0f)
+                )
+            )
+
+            val labelId = "sample_${place.kakaoPlaceId}"
+            val labelOptions = LabelOptions.from(labelId, position)
+                .setStyles(labelStyles)
+                .setClickable(true)
+                .setTag(place)
+
+            layer.addLabel(labelOptions)
+            currentSampleLabelIds.add(labelId)
+        }
+    }
+
+    private fun renderNoiseMarker(place: PlaceUiSample): Bitmap {
+        val inflater = LayoutInflater.from(this)
+        val view = inflater.inflate(R.layout.view_noise_marker, null, false)
+        view.layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+
+        val dbTextView = view.findViewById<TextView>(R.id.markerDbTextView)
+        val statusTextView = view.findViewById<TextView>(R.id.markerStatusTextView)
+        val nameTextView = view.findViewById<TextView>(R.id.markerPlaceNameTextView)
+
+        dbTextView.text = place.noiseValueDb.toString()
+        statusTextView.text = getString(place.noiseLevel.labelRes)
+        nameTextView.text = place.name.take(12)
+
+        (dbTextView.background?.mutate() as? GradientDrawable)?.setColor(
+            ContextCompat.getColor(this, noiseColorRes(place.noiseLevel))
+        )
+        statusTextView.setTextColor(ContextCompat.getColor(this, noiseColorRes(place.noiseLevel)))
+        nameTextView.setTextColor(ContextCompat.getColor(this, R.color.grey_dark))
+
+        val spec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        view.measure(spec, spec)
+        view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+
+        return Bitmap.createBitmap(view.measuredWidth, view.measuredHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
+            val canvas = Canvas(bitmap)
+            view.draw(canvas)
+        }
+    }
+
+    private fun renderBasicMarker(place: PlaceDocument): Bitmap {
+        val inflater = LayoutInflater.from(this)
+        val view = inflater.inflate(R.layout.view_noise_marker, null, false).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val dbTextView = view.findViewById<TextView>(R.id.markerDbTextView)
+        val statusTextView = view.findViewById<TextView>(R.id.markerStatusTextView)
+        val nameTextView = view.findViewById<TextView>(R.id.markerPlaceNameTextView)
+
+        nameTextView.text = place.place_name
+        dbTextView.text = "-"
+        statusTextView.text = getString(R.string.map_selected_place_label)
+        statusTextView.setTextColor(ContextCompat.getColor(this, R.color.grey))
+        nameTextView.setTextColor(ContextCompat.getColor(this, R.color.grey_dark))
+
+        (dbTextView.background?.mutate() as? GradientDrawable)?.setColor(
+            ContextCompat.getColor(this, R.color.grey)
+        )
+
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        view.measure(widthSpec, heightSpec)
+        view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+
+        return Bitmap.createBitmap(view.measuredWidth, view.measuredHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
+            val canvas = Canvas(bitmap)
+            view.draw(canvas)
+        }
+    }
+
+    private fun noiseColorRes(noiseLevel: NoiseLevel): Int = when (noiseLevel) {
+        NoiseLevel.OPTIMAL -> R.color.filter_indicator_optimal
+        NoiseLevel.GOOD -> R.color.filter_indicator_good
+        NoiseLevel.NORMAL -> R.color.filter_indicator_normal
+        NoiseLevel.LOUD -> R.color.filter_indicator_loud
+    }
+
+    private fun dp(value: Float): Int =
+        (value * resources.displayMetrics.density).toInt()
+
+    private fun sp(value: Float): Int =
+        (value * resources.displayMetrics.scaledDensity).toInt()
+
     private fun moveMapToPlace(place: PlaceDocument, showToast: Boolean = true) {
         val lat = place.y.toDoubleOrNull()
         val lng = place.x.toDoubleOrNull()
@@ -285,12 +521,26 @@ class MainActivity : AppCompatActivity() {
         val location = LatLng.from(lat, lng)
         kakaoMap?.let { map ->
             map.moveCamera(CameraUpdateFactory.newCenterPosition(location))
+            showSelectedPlaceMarker(place, location)
             if (showToast) {
                 Toast.makeText(this, "Moved to ${place.place_name}.", Toast.LENGTH_SHORT).show()
             }
         }
         lastKnownCenter = location
         updateCategoryLabels("", emptyList())
+        clearSampleMarkers()
+    }
+
+    private fun openPlaceDetail(placeId: String, name: String, address: String?, category: String?) {
+        Log.d("PlaceIdCheck", "placeId=$placeId, name=$name, address=$address, category=$category")
+        val intent = PlaceDetailActivity.createIntent(
+            context = this,
+            placeId = placeId,
+            placeName = name,
+            address = address,
+            category = category
+        )
+        startActivity(intent)
     }
 
     private fun performSearch() {
@@ -302,8 +552,11 @@ class MainActivity : AppCompatActivity() {
 
         binding.searchEditText.clearFocus()
         binding.categoryChipGroup.clearCheck()
-        showSearchResults(emptyList())
+        showSearchResults(emptyList(), showSamplesWhenEmpty = false)
         updateCategoryLabels("", emptyList())
+        clearSelectedPlaceMarker()
+        closeInfoWindow()
+        clearSampleMarkers()
 
         lifecycleScope.launch {
             try {
@@ -340,6 +593,55 @@ class MainActivity : AppCompatActivity() {
         } else {
             Toast.makeText(this, "No results found.", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun setupFilterDropdown() {
+        val filterOptions = resources.getStringArray(R.array.filter_options)
+        val typedArray = resources.obtainTypedArray(R.array.filter_indicator_colors)
+        val indicatorColors = IntArray(filterOptions.size) { index ->
+            typedArray.getColor(
+                index,
+                ContextCompat.getColor(this, R.color.filter_indicator_all)
+            )
+        }
+        typedArray.recycle()
+
+        val adapter = object : ArrayAdapter<String>(
+            this,
+            R.layout.item_filter_option,
+            R.id.optionTextView,
+            filterOptions
+        ) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val view = super.getView(position, convertView, parent)
+                applyIndicatorColor(view, position, indicatorColors)
+                return view
+            }
+
+            override fun getDropDownView(
+                position: Int,
+                convertView: View?,
+                parent: ViewGroup
+            ): View {
+                val view = super.getDropDownView(position, convertView, parent)
+                applyIndicatorColor(view, position, indicatorColors)
+                return view
+            }
+
+            private fun applyIndicatorColor(view: View, position: Int, colors: IntArray) {
+                val indicatorView = view.findViewById<View>(R.id.indicatorView) ?: return
+                val color = colors.getOrNull(position)
+                    ?: ContextCompat.getColor(this@MainActivity, R.color.filter_indicator_all)
+                val background = indicatorView.background?.mutate()
+                if (background is GradientDrawable) {
+                    background.setColor(color)
+                }
+            }
+        }
+
+        adapter.setDropDownViewResource(R.layout.item_filter_option)
+        binding.filterDropdown.setAdapter(adapter)
+        binding.filterDropdown.setText(getString(R.string.filter_option_all), false)
     }
 
     private fun setupBottomNavigation() {
@@ -403,5 +705,149 @@ class MainActivity : AppCompatActivity() {
         val total_count: Int,
         val pageable_count: Int,
         val is_end: Boolean
+    )
+
+    private enum class NoiseLevel(val labelRes: Int) {
+        OPTIMAL(R.string.noise_level_optimal),
+        GOOD(R.string.noise_level_good),
+        NORMAL(R.string.noise_level_normal),
+        LOUD(R.string.noise_level_loud)
+    }
+
+    private data class PlaceUiSample(
+        val kakaoPlaceId: String,
+        val name: String,
+        val address: String,
+        val latitude: Double,
+        val longitude: Double,
+        val noiseLevel: NoiseLevel,
+        val rating: Float,
+        val noiseValueDb: Int,
+        val reviewCount: Int,
+        val latestReviewSnippet: String,
+        val categoryLabel: String = ""
+    )
+
+    private val samplePlaces = listOf(
+        PlaceUiSample(
+            kakaoPlaceId = "10834151",
+            name = "투썸플레이스 노원공릉점",
+            address = "서울 노원구 동일로192길 52 1층",
+            latitude = 37.62569501,
+            longitude = 127.0784260,
+            noiseLevel = NoiseLevel.OPTIMAL,
+            rating = 4.6f,
+            noiseValueDb = 42,
+            reviewCount = 12,
+            latestReviewSnippet = "카페 내 음악 볼륨이 낮아서 조용했어요."
+        ),
+        PlaceUiSample(
+            kakaoPlaceId = "18520333",
+            name = "파운드그레도",
+            address = "서울 노원구 동일로 1102 1층",
+            latitude = 37.62624471,
+            longitude = 127.0784260,
+            noiseLevel = NoiseLevel.GOOD,
+            rating = 4.4f,
+            noiseValueDb = 48,
+            reviewCount = 7,
+            latestReviewSnippet = "오후엔 주변이 살짝 붐비지만 대화는 무난해요."
+        ),
+        PlaceUiSample(
+            kakaoPlaceId = "20923010",
+            name = "코타브레드",
+            address = "서울 노원구 공릉로 165 1층",
+            latitude = 37.62624471,
+            longitude = 127.0772097,
+            noiseLevel = NoiseLevel.NORMAL,
+            rating = 4.2f,
+            noiseValueDb = 58,
+            reviewCount = 5,
+            latestReviewSnippet = "빵 굽는 소리랑 손님들 대화가 은근 크게 들려요."
+        ),
+        PlaceUiSample(
+            kakaoPlaceId = "19374025",
+            name = "무이로커피",
+            address = "서울 노원구 동일로186길 77-7 명문빌딩 1층",
+            latitude = 37.62319451,
+            longitude = 127.0766327,
+            noiseLevel = NoiseLevel.OPTIMAL,
+            rating = 4.7f,
+            noiseValueDb = 39,
+            reviewCount = 9,
+            latestReviewSnippet = "콘센트 많고 조용해서 작업하기 좋아요."
+        ),
+        PlaceUiSample(
+            kakaoPlaceId = "20786938",
+            name = "블루마일스커피로스터즈",
+            address = "서울 노원구 동일로190길 65 우화빌딩 2층",
+            latitude = 37.62536851,
+            longitude = 127.0776785,
+            noiseLevel = NoiseLevel.GOOD,
+            rating = 4.5f,
+            noiseValueDb = 50,
+            reviewCount = 6,
+            latestReviewSnippet = "로스터기 돌아가는 소리가 조금 있지만 무난해요."
+        ),
+        PlaceUiSample(
+            kakaoPlaceId = "15674001",
+            name = "칼퇴근김대리 공릉점",
+            address = "서울 노원구 동일로192길 53 1층",
+            latitude = 37.62580571,
+            longitude = 127.0778897,
+            noiseLevel = NoiseLevel.LOUD,
+            rating = 4.1f,
+            noiseValueDb = 68,
+            reviewCount = 10,
+            latestReviewSnippet = "저녁에는 사람들이 많아서 꽤 시끄러워요."
+        ),
+        PlaceUiSample(
+            kakaoPlaceId = "15858055",
+            name = "스타벅스 공릉역점",
+            address = "서울 노원구 동일로 1081",
+            latitude = 37.62243271,
+            longitude = 127.0780287,
+            noiseLevel = NoiseLevel.NORMAL,
+            rating = 4.3f,
+            noiseValueDb = 55,
+            reviewCount = 21,
+            latestReviewSnippet = "출퇴근 시간대엔 자리 찾기 힘들고 소음도 커요."
+        ),
+        PlaceUiSample(
+            kakaoPlaceId = "23011311",
+            name = "역전할머니맥주 서울공릉점",
+            address = "서울 노원구 동일로192길 80 1층",
+            latitude = 37.62640571,
+            longitude = 127.0778897,
+            noiseLevel = NoiseLevel.LOUD,
+            rating = 4.0f,
+            noiseValueDb = 72,
+            reviewCount = 3,
+            latestReviewSnippet = "술집 분위기라 음악과 대화 소리가 크네요."
+        ),
+        PlaceUiSample(
+            kakaoPlaceId = "16397395",
+            name = "술잔에타",
+            address = "서울 노원구 공릉로51길 7 1층",
+            latitude = 37.62885971,
+            longitude = 127.0818817,
+            noiseLevel = NoiseLevel.LOUD,
+            rating = 4.2f,
+            noiseValueDb = 70,
+            reviewCount = 4,
+            latestReviewSnippet = "주말 밤에는 거의 떠들썩한 편."
+        ),
+        PlaceUiSample(
+            kakaoPlaceId = "15364843",
+            name = "아너카페",
+            address = "서울 노원구 동일로192다길 9 A동 1-2층",
+            latitude = 37.62479571,
+            longitude = 127.0784260,
+            noiseLevel = NoiseLevel.GOOD,
+            rating = 4.6f,
+            noiseValueDb = 52,
+            reviewCount = 14,
+            latestReviewSnippet = "적당한 음악과 조용한 좌석이 많아요."
+        )
     )
 }

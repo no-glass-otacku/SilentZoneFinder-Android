@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="filter_options">
+        <item>@string/filter_option_all</item>
+        <item>@string/filter_option_optimal</item>
+        <item>@string/filter_option_good</item>
+        <item>@string/filter_option_normal</item>
+        <item>@string/filter_option_loud</item>
+    </string-array>
+
+    <array name="filter_indicator_colors">
+        <item>@color/filter_indicator_all</item>
+        <item>@color/filter_indicator_optimal</item>
+        <item>@color/filter_indicator_good</item>
+        <item>@color/filter_indicator_normal</item>
+        <item>@color/filter_indicator_loud</item>
+    </array>
+</resources>
+

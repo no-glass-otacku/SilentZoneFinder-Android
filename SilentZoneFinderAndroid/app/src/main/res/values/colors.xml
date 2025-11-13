@@ -14,4 +14,9 @@
     <color name="green">#4CAF50</color>
     <color name="light_grey">#E0E0E0</color>
     <color name="red">#F44336</color>
+    <color name="filter_indicator_all">#5F6368</color>
+    <color name="filter_indicator_optimal">#0DBB80</color>
+    <color name="filter_indicator_good">#F4B400</color>
+    <color name="filter_indicator_normal">#FB8C00</color>
+    <color name="filter_indicator_loud">#EA4335</color>
 </resources>
