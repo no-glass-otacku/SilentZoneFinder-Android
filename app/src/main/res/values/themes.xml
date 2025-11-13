@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- MainActivity용 Material 테마 -->
+    <style name="Theme.SilentZoneFinder_Android" parent="android:Theme.Material.Light.NoActionBar" />
+    
+    <!-- LoginActivity용 AppCompat 테마 -->
+    <style name="Theme.SilentZoneFinder_Android.AppCompat" parent="Theme.AppCompat.Light.NoActionBar" />
+</resources>
