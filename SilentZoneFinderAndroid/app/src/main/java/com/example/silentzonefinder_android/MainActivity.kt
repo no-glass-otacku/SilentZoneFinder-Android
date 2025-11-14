@@ -1,9 +1,12 @@
 package com.example.silentzonefinder_android
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.GradientDrawable
+import android.location.Location
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -13,14 +16,21 @@ import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import com.example.silentzonefinder_android.databinding.ActivityMainBinding
 import com.example.silentzonefinder_android.adapter.PlaceSearchAdapter
 import com.example.silentzonefinder_android.PlaceDetailActivity
+import com.example.silentzonefinder_android.SupabaseManager
+import io.github.jan.supabase.postgrest.postgrest
 import com.kakao.vectormap.KakaoMap
 import com.kakao.vectormap.KakaoMapReadyCallback
 import com.kakao.vectormap.LatLng
@@ -49,9 +59,12 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 import java.util.Locale
 
@@ -68,6 +81,7 @@ class MainActivity : AppCompatActivity() {
     private val currentCategoryLabelIds = mutableListOf<String>()
     private val currentSampleLabelIds = mutableListOf<String>()
     private var selectedPlaceLabelId: String? = null
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
     private val httpClient = HttpClient(Android) {
         install(ContentNegotiation) {
             json(Json {
@@ -77,16 +91,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        
+        if (fineLocationGranted || coarseLocationGranted) {
+            moveToCurrentLocation()
+        } else {
+            Toast.makeText(
+                this,
+                getString(R.string.location_permission_denied),
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        
         setupMap()
         setupSearch()
         setupSearchResultsList()
         setupCategoryChips()
         setupFilterDropdown()
+        setupMyLocationButton()
     }
 
     override fun onResume() {
@@ -224,6 +258,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadCategoryPlaces(option: CategoryOption) {
+        // 현재 카메라 위치 사용 (moveCamera 호출 시 lastKnownCenter가 업데이트됨)
         val center = lastKnownCenter
         binding.searchEditText.clearFocus()
         categorySearchJob?.cancel()
@@ -366,24 +401,105 @@ class MainActivity : AppCompatActivity() {
             layer.getLabel(id)?.let { layer.remove(it) }
         }
 
+        // 먼저 하드코딩된 샘플 데이터 확인
         val matchedSample = samplePlaces.firstOrNull { it.kakaoPlaceId == place.id }
-        val markerBitmap = matchedSample?.let { renderNoiseMarker(it) } ?: renderBasicMarker(place)
-
-        val labelStyles = labelManager.addLabelStyles(
-            LabelStyles.from(
-                LabelStyle.from(markerBitmap)
-                    .setAnchorPoint(0.5f, 1.0f)
+        if (matchedSample != null) {
+            // 샘플 데이터가 있으면 바로 사용
+            val markerBitmap = renderNoiseMarker(matchedSample)
+            val labelStyles = labelManager.addLabelStyles(
+                LabelStyles.from(
+                    LabelStyle.from(markerBitmap)
+                        .setAnchorPoint(0.5f, 1.0f)
+                )
             )
-        )
 
-        val labelId = "selected_${place.id}_${System.currentTimeMillis()}"
-        val labelOptions = LabelOptions.from(labelId, position)
-            .setStyles(labelStyles)
-            .setClickable(true)
-            .setTag(place)
+            val labelId = "selected_${place.id}_${System.currentTimeMillis()}"
+            val labelOptions = LabelOptions.from(labelId, position)
+                .setStyles(labelStyles)
+                .setClickable(true)
+                .setTag(place)
 
-        layer.addLabel(labelOptions)
-        selectedPlaceLabelId = labelId
+            layer.addLabel(labelOptions)
+            selectedPlaceLabelId = labelId
+        } else {
+            // DB에서 리뷰 조회하여 평균 데시벨 계산
+            lifecycleScope.launch {
+                try {
+                    val reviews: List<ReviewDto> = withContext(Dispatchers.IO) {
+                        SupabaseManager.client.postgrest["reviews"]
+                            .select()
+                            .decodeList<ReviewDto>()
+                            .filter { it.kakaoPlaceId == place.id }
+                    }
+
+                    val markerBitmap = if (reviews.isNotEmpty()) {
+                        // 평균 데시벨 계산
+                        val avgDb = reviews.map { review -> review.noiseLevelDb }.average()
+                        val avgRating = reviews.map { review -> review.rating.toFloat() }.average().toFloat()
+                        val noiseLevel = getNoiseLevelFromDb(avgDb)
+                        
+                        // PlaceDocument를 PlaceUiSample로 변환
+                        val lat = place.y.toDoubleOrNull() ?: 0.0
+                        val lng = place.x.toDoubleOrNull() ?: 0.0
+                        val address = place.road_address_name.takeIf { it.isNotBlank() } 
+                            ?: place.address_name
+                        
+                        val placeUiSample = PlaceUiSample(
+                            kakaoPlaceId = place.id,
+                            name = place.place_name,
+                            address = address,
+                            latitude = lat,
+                            longitude = lng,
+                            noiseLevel = noiseLevel,
+                            rating = avgRating,
+                            noiseValueDb = avgDb.toInt(),
+                            reviewCount = reviews.size,
+                            latestReviewSnippet = reviews.firstOrNull()?.text?.take(30) ?: "",
+                            categoryLabel = place.category_name
+                        )
+                        renderNoiseMarker(placeUiSample)
+                    } else {
+                        // 리뷰가 없으면 기본 마커
+                        renderBasicMarker(place)
+                    }
+
+                    val labelStyles = labelManager.addLabelStyles(
+                        LabelStyles.from(
+                            LabelStyle.from(markerBitmap)
+                                .setAnchorPoint(0.5f, 1.0f)
+                        )
+                    )
+
+                    val labelId = "selected_${place.id}_${System.currentTimeMillis()}"
+                    val labelOptions = LabelOptions.from(labelId, position)
+                        .setStyles(labelStyles)
+                        .setClickable(true)
+                        .setTag(place)
+
+                    layer.addLabel(labelOptions)
+                    selectedPlaceLabelId = labelId
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Failed to load reviews for marker", e)
+                    // 에러 발생 시 기본 마커 표시
+                    val markerBitmap = renderBasicMarker(place)
+                    val labelStyles = labelManager.addLabelStyles(
+                        LabelStyles.from(
+                            LabelStyle.from(markerBitmap)
+                                .setAnchorPoint(0.5f, 1.0f)
+                        )
+                    )
+
+                    val labelId = "selected_${place.id}_${System.currentTimeMillis()}"
+                    val labelOptions = LabelOptions.from(labelId, position)
+                        .setStyles(labelStyles)
+                        .setClickable(true)
+                        .setTag(place)
+
+                    layer.addLabel(labelOptions)
+                    selectedPlaceLabelId = labelId
+                }
+            }
+        }
     }
 
     private fun clearSampleMarkers() {
@@ -447,9 +563,15 @@ class MainActivity : AppCompatActivity() {
         statusTextView.text = getString(place.noiseLevel.labelRes)
         nameTextView.text = place.name.take(12)
 
-        (dbTextView.background?.mutate() as? GradientDrawable)?.setColor(
-            ContextCompat.getColor(this, noiseColorRes(place.noiseLevel))
-        )
+        // 배경은 더 투명한 흰색 유지, 테두리만 색상 변경 (더 두껍게)
+        (dbTextView.background?.mutate() as? GradientDrawable)?.apply {
+            // 더 투명한 흰색 배경 (0xB3 = 약 70% 불투명도)
+            setColor(0xB3FFFFFF.toInt())
+            setStroke(
+                dp(4f),
+                ContextCompat.getColor(this@MainActivity, noiseColorRes(place.noiseLevel))
+            )
+        }
         statusTextView.setTextColor(ContextCompat.getColor(this, noiseColorRes(place.noiseLevel)))
         nameTextView.setTextColor(ContextCompat.getColor(this, R.color.grey_dark))
 
@@ -482,9 +604,15 @@ class MainActivity : AppCompatActivity() {
         statusTextView.setTextColor(ContextCompat.getColor(this, R.color.grey))
         nameTextView.setTextColor(ContextCompat.getColor(this, R.color.grey_dark))
 
-        (dbTextView.background?.mutate() as? GradientDrawable)?.setColor(
-            ContextCompat.getColor(this, R.color.grey)
-        )
+        // 배경은 더 투명한 흰색 유지, 테두리만 회색 (더 두껍게)
+        (dbTextView.background?.mutate() as? GradientDrawable)?.apply {
+            // 더 투명한 흰색 배경 (0xB3 = 약 70% 불투명도)
+            setColor(0xB3FFFFFF.toInt())
+            setStroke(
+                dp(4f),
+                ContextCompat.getColor(this@MainActivity, R.color.grey)
+            )
+        }
 
         val widthSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         val heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
@@ -503,6 +631,26 @@ class MainActivity : AppCompatActivity() {
         NoiseLevel.NORMAL -> R.color.filter_indicator_normal
         NoiseLevel.LOUD -> R.color.filter_indicator_loud
     }
+
+    private fun getNoiseLevelFromDb(db: Double): NoiseLevel = when {
+        db <= 45.0 -> NoiseLevel.OPTIMAL
+        db <= 55.0 -> NoiseLevel.GOOD
+        db <= 65.0 -> NoiseLevel.NORMAL
+        else -> NoiseLevel.LOUD
+    }
+
+    @Serializable
+    private data class ReviewDto(
+        val id: Int,
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        val rating: Int,
+        val text: String,
+        val images: List<String>? = null,
+        @SerialName("noise_level_db") val noiseLevelDb: Double,
+        @SerialName("created_at") val createdAt: String,
+        @SerialName("user_id") val userId: String? = null,
+        val amenities: List<String>? = null
+    )
 
     private fun dp(value: Float): Int =
         (value * resources.displayMetrics.density).toInt()
@@ -642,6 +790,98 @@ class MainActivity : AppCompatActivity() {
         adapter.setDropDownViewResource(R.layout.item_filter_option)
         binding.filterDropdown.setAdapter(adapter)
         binding.filterDropdown.setText(getString(R.string.filter_option_all), false)
+    }
+
+    private fun setupMyLocationButton() {
+        binding.fabMyLocation.setOnClickListener {
+            checkLocationPermissionAndMove()
+        }
+    }
+
+    private fun checkLocationPermissionAndMove() {
+        val fineLocationGranted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val coarseLocationGranted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (fineLocationGranted || coarseLocationGranted) {
+            moveToCurrentLocation()
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
+    private fun moveToCurrentLocation() {
+        if (kakaoMap == null) {
+            Toast.makeText(this, getString(R.string.location_error), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val fineLocationGranted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val coarseLocationGranted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!fineLocationGranted && !coarseLocationGranted) {
+            Toast.makeText(
+                this,
+                getString(R.string.location_permission_required),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        try {
+            val cancellationTokenSource = CancellationTokenSource()
+            fusedLocationClient.getCurrentLocation(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                cancellationTokenSource.token
+            ).addOnSuccessListener { location: Location? ->
+                if (location != null) {
+                    val currentLatLng = LatLng.from(location.latitude, location.longitude)
+                    kakaoMap?.moveCamera(
+                        CameraUpdateFactory.newCenterPosition(currentLatLng)
+                    )
+                    lastKnownCenter = currentLatLng
+                    Log.d("MainActivity", "Moved to current location: ${location.latitude}, ${location.longitude}")
+                } else {
+                    Toast.makeText(
+                        this,
+                        getString(R.string.location_error),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }.addOnFailureListener { exception ->
+                Log.e("MainActivity", "Failed to get location", exception)
+                Toast.makeText(
+                    this,
+                    getString(R.string.location_error),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        } catch (e: SecurityException) {
+            Log.e("MainActivity", "Security exception when getting location", e)
+            Toast.makeText(
+                this,
+                getString(R.string.location_permission_required),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     private fun setupBottomNavigation() {
