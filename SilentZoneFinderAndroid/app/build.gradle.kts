@@ -104,6 +104,9 @@ dependencies {
     // Kakao Map SDK
     implementation("com.kakao.maps.open:android:2.12.8")
     
+    // Google Play Services Location
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
