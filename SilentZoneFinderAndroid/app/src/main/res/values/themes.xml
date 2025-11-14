@@ -1,6 +1,7 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Base.Theme.SilentZoneFinderAndroid" parent="Theme.Material3.DayNight.NoActionBar">
+
         <item name="android:activityOpenEnterAnimation">@anim/fade_in_slow</item>
         <item name="android:activityOpenExitAnimation">@anim/fade_out_slow</item>
 
