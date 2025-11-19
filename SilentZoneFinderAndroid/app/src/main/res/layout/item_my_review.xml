@@ -4,9 +4,12 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="12dp"
-    app:cardCornerRadius="12dp"
-    app:cardElevation="2dp">
+    android:layout_marginBottom="16dp"
+    app:cardCornerRadius="18dp"
+    app:cardElevation="0dp"
+    app:cardBackgroundColor="@color/review_card_background"
+    app:strokeColor="@color/review_card_stroke"
+    app:strokeWidth="1dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -25,7 +28,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:textColor="@color/grey_dark"
+                android:textColor="@color/filter_button_text"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 tools:text="Quiet Cafe" />
@@ -34,9 +37,23 @@
                 android:id="@+id/tvRating"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/grey_dark"
+                android:textColor="@color/filter_button_text"
                 android:textSize="14sp"
                 tools:text="★★★★☆" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDelete"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/my_reviews_delete"
+                android:textColor="@color/filter_button_text"
+                android:textSize="12sp"
+                app:icon="@drawable/ic_delete"
+                app:iconGravity="textStart"
+                app:iconPadding="4dp"
+                app:iconTint="@color/filter_button_text" />
         </LinearLayout>
 
         <LinearLayout
@@ -82,7 +99,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:textColor="@color/grey_dark"
+            android:textColor="@color/filter_button_text"
             android:textSize="14sp"
             tools:text="Nice ambiance, good for casual work." />
 

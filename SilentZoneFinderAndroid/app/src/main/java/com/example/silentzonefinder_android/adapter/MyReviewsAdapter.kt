@@ -13,7 +13,9 @@ import com.example.silentzonefinder_android.R
 import com.example.silentzonefinder_android.data.Review
 
 class MyReviewsAdapter(
-    private var reviewList: List<Review>
+    private var reviewList: List<Review>,
+    private val onReviewClick: (Review) -> Unit,
+    private val onDeleteClick: (Review) -> Unit
 ) : RecyclerView.Adapter<MyReviewsAdapter.ReviewViewHolder>() {
 
     inner class ReviewViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -24,6 +26,7 @@ class MyReviewsAdapter(
         val dateTextView: TextView = itemView.findViewById(R.id.tvDate)
         val reviewTextView: TextView = itemView.findViewById(R.id.tvReviewText)
         val amenityTagsLayout: LinearLayout = itemView.findViewById(R.id.amenityTagsLayout)
+        val deleteButton: View = itemView.findViewById(R.id.btnDelete)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ReviewViewHolder {
@@ -48,6 +51,9 @@ class MyReviewsAdapter(
 
         updateStatusBadgeColor(context, holder.statusBadgeTextView, review.status)
         renderAmenityTags(context, holder.amenityTagsLayout, review.amenities)
+
+        holder.itemView.setOnClickListener { onReviewClick(review) }
+        holder.deleteButton.setOnClickListener { onDeleteClick(review) }
     }
 
     override fun getItemCount(): Int = reviewList.size

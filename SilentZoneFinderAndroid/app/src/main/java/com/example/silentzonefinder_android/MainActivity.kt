@@ -36,6 +36,7 @@ import com.kakao.vectormap.KakaoMapReadyCallback
 import com.kakao.vectormap.LatLng
 import com.kakao.vectormap.MapLifeCycleCallback
 import com.kakao.vectormap.MapView
+import com.kakao.vectormap.camera.CameraPosition
 import com.kakao.vectormap.camera.CameraUpdateFactory
 import com.kakao.vectormap.label.LabelLayer
 import com.kakao.vectormap.label.LabelOptions
@@ -61,12 +62,19 @@ import io.ktor.client.request.headers
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 import java.util.Locale
+import kotlin.math.asin
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -78,9 +86,14 @@ class MainActivity : AppCompatActivity() {
     private var currentInfoWindow: InfoWindow? = null
     private val defaultLocation = LatLng.from(37.5665, 126.9780)
     private var lastKnownCenter: LatLng = defaultLocation
-    private val currentCategoryLabelIds = mutableListOf<String>()
-    private val currentSampleLabelIds = mutableListOf<String>()
+    private val currentMarkerLabelIds = mutableListOf<String>()
+    private var allPlaceMarkers: List<PlaceMarkerData> = emptyList()
+    private var visiblePlaceMarkers: List<PlaceMarkerData> = emptyList()
     private var selectedPlaceLabelId: String? = null
+    private var cameraMoveReloadJob: Job? = null
+    private var lastLoadedCameraCenter: LatLng? = null
+    private var lastLoadedZoomLevel: Int = -1
+    private val cameraMoveDebounceMillis = 600L
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private val httpClient = HttpClient(Android) {
         install(ContentNegotiation) {
@@ -133,6 +146,10 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNavigation.selectedItemId = R.id.navigation_map
         // Disable transition animations when returning to this activity.
         overridePendingTransition(0, 0)
+
+        if (kakaoMap != null) {
+            loadPlacesWithReviews()
+        }
     }
 
     private fun setupMap() {
@@ -163,14 +180,17 @@ class MainActivity : AppCompatActivity() {
                 labelLayer = map.labelManager?.layer
                 labelLayer?.setClickable(true)
                 infoWindowLayer = map.mapWidgetManager?.infoWindowLayer?.also { it.setVisible(true) }
+                setupCameraMoveListener(map)
                 map.setOnLabelClickListener { _, _, label ->
                     when (val payload = label.tag) {
-                        is PlaceUiSample -> {
+                        is PlaceMarkerData -> {
                             openPlaceDetail(
                                 payload.kakaoPlaceId,
                                 payload.name,
                                 payload.address,
-                                getString(R.string.category_cafes)
+                                payload.categoryLabel,
+                                payload.latitude,
+                                payload.longitude
                             )
                             true
                         }
@@ -181,7 +201,9 @@ class MainActivity : AppCompatActivity() {
                                 payload.id,
                                 payload.place_name,
                                 address,
-                                payload.category_name
+                                payload.category_name,
+                                payload.y.toDoubleOrNull(),
+                                payload.x.toDoubleOrNull()
                             )
                             true
                         }
@@ -191,7 +213,7 @@ class MainActivity : AppCompatActivity() {
                 map.setOnMapClickListener { _, _, _, _ -> closeInfoWindow() }
                 lastKnownCenter = defaultLocation
                 android.util.Log.d("MainActivity", "Map is ready.")
-                renderSampleMarkers()
+                loadPlacesWithReviews()
             }
 
             override fun getPosition(): LatLng {
@@ -204,6 +226,13 @@ class MainActivity : AppCompatActivity() {
         }
         
         binding.mapView.start(lifeCycleCallback, readyCallback)
+    }
+
+    private fun setupCameraMoveListener(map: KakaoMap) {
+        map.setOnCameraMoveEndListener { _, cameraPosition, _ ->
+            lastKnownCenter = cameraPosition.position
+            scheduleCameraReload(cameraPosition)
+        }
     }
 
     private fun setupSearch() {
@@ -223,11 +252,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSearchResultsList() {
         searchResultsAdapter = PlaceSearchAdapter { place ->
+            val lat = place.y.toDoubleOrNull()
+            val lng = place.x.toDoubleOrNull()
             moveMapToPlace(place)
             binding.categoryChipGroup.clearCheck()
-            showSearchResults(emptyList(), showSamplesWhenEmpty = false)
+            showSearchResults(emptyList(), renderMarkersWhenEmpty = false)
             val address = place.road_address_name.takeIf { it.isNotBlank() } ?: place.address_name
-            openPlaceDetail(place.id, place.place_name, address, place.category_name)
+            openPlaceDetail(
+                placeId = place.id,
+                name = place.place_name,
+                address = address,
+                category = place.category_name,
+                lat = lat,
+                lng = lng
+            )
         }
         binding.searchResultsRecyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
@@ -272,7 +310,7 @@ class MainActivity : AppCompatActivity() {
                     "${results.size} ${option.label.lowercase(Locale.US)} found nearby."
                 }
                 Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
-                showSearchResults(emptyList(), showSamplesWhenEmpty = false)
+                showSearchResults(emptyList(), renderMarkersWhenEmpty = false)
             } catch (e: Exception) {
                 android.util.Log.e("MainActivity", "Category search failed", e)
                 Toast.makeText(this@MainActivity, "Category search failed: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -311,7 +349,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSearchResults(
         results: List<PlaceDocument>,
-        showSamplesWhenEmpty: Boolean = true
+        renderMarkersWhenEmpty: Boolean = true
     ) {
         searchResultsAdapter.submitList(results)
         val hasResults = results.isNotEmpty()
@@ -319,63 +357,33 @@ class MainActivity : AppCompatActivity() {
         binding.searchResultsRecyclerView.isVisible = hasResults
         if (hasResults) {
             closeInfoWindow()
-            clearSampleMarkers()
+            clearMarkers()
             binding.searchResultsRecyclerView.scrollToPosition(0)
-        } else if (showSamplesWhenEmpty) {
-            renderSampleMarkers()
+        } else if (renderMarkersWhenEmpty) {
+            renderFilteredMarkers()
         }
     }
 
     private fun updateCategoryLabels(categoryLabel: String, places: List<PlaceDocument>) {
-        val map = kakaoMap ?: return
-        val labelManager = map.labelManager ?: return
-        val layer = obtainLabelLayer() ?: return
-
-        clearSampleMarkers()
-        closeInfoWindow()
-        // Remove previously added labels.
-        currentCategoryLabelIds.forEach { id ->
-            layer.getLabel(id)?.let { layer.remove(it) }
-        }
-        currentCategoryLabelIds.clear()
-
         if (places.isEmpty()) {
+            renderFilteredMarkers()
             return
         }
 
-        clearSelectedPlaceMarker()
+        val ids = places.map { it.id }.toSet()
+        val matchedPlaces = visiblePlaceMarkers.filter { ids.contains(it.kakaoPlaceId) }
 
-        val labelStyles = labelManager.addLabelStyles(
-            LabelStyles.from(
-                LabelStyle.from().setTextStyles(
-                    LabelTextStyle.from(this, R.style.KakaoLabelTextStyle)
-                )
-            )
-        )
-
-        var firstLocation: LatLng? = null
-        places.forEachIndexed { index, place ->
-            val lat = place.y.toDoubleOrNull()
-            val lng = place.x.toDoubleOrNull()
-            if (lat != null && lng != null) {
-                val position = LatLng.from(lat, lng)
-                val labelText = place.place_name.takeIf { it.isNotBlank() } ?: categoryLabel
-                val labelId = "category_${index}_${labelText.hashCode()}"
-                val labelOptions = LabelOptions.from(labelId, position)
-                    .setStyles(labelStyles)
-                    .setTexts(LabelTextBuilder().setTexts(labelText))
-                layer.addLabel(labelOptions)
-                currentCategoryLabelIds.add(labelId)
-                if (firstLocation == null) {
-                    firstLocation = position
-                    lastKnownCenter = position
-                }
-            }
+        if (matchedPlaces.isEmpty()) {
+            Toast.makeText(
+                this,
+                getString(R.string.map_no_review_places_for_category, categoryLabel.ifBlank { "-" }),
+                Toast.LENGTH_SHORT
+            ).show()
+            renderFilteredMarkers()
+            return
         }
 
-        firstLocation?.let { position ->
-            map.moveCamera(CameraUpdateFactory.newCenterPosition(position))
-        }
+        renderMarkers(matchedPlaces, moveCameraToFirstMarker = true)
     }
 
     private fun obtainLabelLayer(): LabelLayer? {
@@ -402,10 +410,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         // 먼저 하드코딩된 샘플 데이터 확인
-        val matchedSample = samplePlaces.firstOrNull { it.kakaoPlaceId == place.id }
-        if (matchedSample != null) {
+        val matchedMarker = visiblePlaceMarkers.firstOrNull { it.kakaoPlaceId == place.id }
+        if (matchedMarker != null) {
             // 샘플 데이터가 있으면 바로 사용
-            val markerBitmap = renderNoiseMarker(matchedSample)
+            val markerBitmap = renderNoiseMarker(matchedMarker)
             val labelStyles = labelManager.addLabelStyles(
                 LabelStyles.from(
                     LabelStyle.from(markerBitmap)
@@ -422,6 +430,25 @@ class MainActivity : AppCompatActivity() {
             layer.addLabel(labelOptions)
             selectedPlaceLabelId = labelId
         } else {
+            val fallbackMarker = allPlaceMarkers.firstOrNull { it.kakaoPlaceId == place.id }
+            if (fallbackMarker != null) {
+                val markerBitmap = renderNoiseMarker(fallbackMarker)
+                val labelStyles = labelManager.addLabelStyles(
+                    LabelStyles.from(
+                        LabelStyle.from(markerBitmap)
+                            .setAnchorPoint(0.5f, 1.0f)
+                    )
+                )
+
+                val labelId = "selected_${place.id}_${System.currentTimeMillis()}"
+                val labelOptions = LabelOptions.from(labelId, position)
+                    .setStyles(labelStyles)
+                    .setClickable(true)
+                    .setTag(place)
+
+                layer.addLabel(labelOptions)
+                selectedPlaceLabelId = labelId
+            } else {
             // DB에서 리뷰 조회하여 평균 데시벨 계산
             lifecycleScope.launch {
                 try {
@@ -438,13 +465,13 @@ class MainActivity : AppCompatActivity() {
                         val avgRating = reviews.map { review -> review.rating.toFloat() }.average().toFloat()
                         val noiseLevel = getNoiseLevelFromDb(avgDb)
                         
-                        // PlaceDocument를 PlaceUiSample로 변환
+                        // PlaceDocument를 PlaceMarkerData로 변환
                         val lat = place.y.toDoubleOrNull() ?: 0.0
                         val lng = place.x.toDoubleOrNull() ?: 0.0
                         val address = place.road_address_name.takeIf { it.isNotBlank() } 
                             ?: place.address_name
                         
-                        val placeUiSample = PlaceUiSample(
+                        val placeUiSample = PlaceMarkerData(
                             kakaoPlaceId = place.id,
                             name = place.place_name,
                             address = address,
@@ -499,16 +526,17 @@ class MainActivity : AppCompatActivity() {
                     selectedPlaceLabelId = labelId
                 }
             }
+            }
         }
     }
 
-    private fun clearSampleMarkers() {
+    private fun clearMarkers() {
         obtainLabelLayer()?.let { layer ->
-            currentSampleLabelIds.forEach { id ->
+            currentMarkerLabelIds.forEach { id ->
                 layer.getLabel(id)?.let { layer.remove(it) }
             }
         }
-        currentSampleLabelIds.clear()
+        currentMarkerLabelIds.clear()
         closeInfoWindow()
     }
 
@@ -519,15 +547,22 @@ class MainActivity : AppCompatActivity() {
         currentInfoWindow = null
     }
 
-    private fun renderSampleMarkers() {
+    private fun renderMarkers(
+        places: List<PlaceMarkerData>,
+        moveCameraToFirstMarker: Boolean = false
+    ) {
         val map = kakaoMap ?: return
         val labelManager = map.labelManager ?: return
         val layer = obtainLabelLayer() ?: return
 
-        clearSampleMarkers()
+        clearMarkers()
 
-        samplePlaces.forEach { place ->
+        var firstPosition: LatLng? = null
+        places.forEach { place ->
             val position = LatLng.from(place.latitude, place.longitude)
+            if (firstPosition == null) {
+                firstPosition = position
+            }
             val markerBitmap = renderNoiseMarker(place)
             val labelStyles = labelManager.addLabelStyles(
                 LabelStyles.from(
@@ -536,18 +571,174 @@ class MainActivity : AppCompatActivity() {
                 )
             )
 
-            val labelId = "sample_${place.kakaoPlaceId}"
+            val labelId = "marker_${place.kakaoPlaceId}"
             val labelOptions = LabelOptions.from(labelId, position)
                 .setStyles(labelStyles)
                 .setClickable(true)
                 .setTag(place)
 
             layer.addLabel(labelOptions)
-            currentSampleLabelIds.add(labelId)
+            currentMarkerLabelIds.add(labelId)
+        }
+
+        if (moveCameraToFirstMarker) {
+            firstPosition?.let { position ->
+                lastKnownCenter = position
+                map.moveCamera(CameraUpdateFactory.newCenterPosition(position))
+            }
         }
     }
 
-    private fun renderNoiseMarker(place: PlaceUiSample): Bitmap {
+    private fun renderFilteredMarkers() {
+        if (visiblePlaceMarkers.isEmpty()) {
+            clearMarkers()
+            return
+        }
+
+        val places = when (currentNoiseFilter) {
+            NoiseFilter.ALL -> visiblePlaceMarkers
+            NoiseFilter.OPTIMAL -> visiblePlaceMarkers.filter { it.noiseLevel == NoiseLevel.OPTIMAL }
+            NoiseFilter.GOOD -> visiblePlaceMarkers.filter { it.noiseLevel == NoiseLevel.GOOD }
+            NoiseFilter.NORMAL -> visiblePlaceMarkers.filter { it.noiseLevel == NoiseLevel.NORMAL }
+            NoiseFilter.LOUD -> visiblePlaceMarkers.filter { it.noiseLevel == NoiseLevel.LOUD }
+        }
+        if (places.isEmpty()) {
+            clearMarkers()
+            Toast.makeText(
+                this,
+                getString(R.string.map_no_places_for_filter),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        renderMarkers(places)
+    }
+
+    private fun scheduleCameraReload(cameraPosition: CameraPosition) {
+        cameraMoveReloadJob?.cancel()
+        cameraMoveReloadJob = lifecycleScope.launch {
+            delay(cameraMoveDebounceMillis)
+            if (shouldReloadForCamera(cameraPosition)) {
+                loadPlacesWithReviews()
+            } else {
+                updateVisibleMarkersForCurrentCamera()
+            }
+        }
+    }
+
+    private fun shouldReloadForCamera(cameraPosition: CameraPosition): Boolean {
+        val lastCenter = lastLoadedCameraCenter ?: return true
+        val distance = calculateDistanceMeters(lastCenter, cameraPosition.position)
+        val zoomChanged = lastLoadedZoomLevel != cameraPosition.zoomLevel
+        return zoomChanged || distance >= requiredDistanceForZoom(cameraPosition.zoomLevel)
+    }
+
+    private fun requiredDistanceForZoom(zoomLevel: Int): Double = when {
+        zoomLevel >= 16 -> 120.0
+        zoomLevel >= 15 -> 180.0
+        zoomLevel >= 14 -> 260.0
+        else -> 520.0
+    }
+
+    private fun viewportRadiusForZoom(zoomLevel: Int): Double = when {
+        zoomLevel >= 17 -> 500.0
+        zoomLevel >= 16 -> 900.0
+        zoomLevel >= 15 -> 1400.0
+        zoomLevel >= 14 -> 2200.0
+        else -> 4000.0
+    }
+
+    private fun updateVisibleMarkersForCurrentCamera() {
+        val map = kakaoMap ?: return
+        val cameraPosition = map.cameraPosition ?: return
+        val center = cameraPosition.position
+        lastKnownCenter = center
+        val radius = viewportRadiusForZoom(cameraPosition.zoomLevel)
+
+        visiblePlaceMarkers = allPlaceMarkers.filter {
+            val markerLatLng = LatLng.from(it.latitude, it.longitude)
+            calculateDistanceMeters(center, markerLatLng) <= radius
+        }
+
+        renderFilteredMarkers()
+    }
+
+    private fun loadPlacesWithReviews() {
+        lifecycleScope.launch {
+            try {
+                val reviews = withContext(Dispatchers.IO) {
+                    SupabaseManager.client.postgrest["reviews"]
+                        .select()
+                        .decodeList<ReviewDto>()
+                }
+
+                if (reviews.isEmpty()) {
+                    allPlaceMarkers = emptyList()
+                    visiblePlaceMarkers = emptyList()
+                    clearMarkers()
+                    return@launch
+                }
+
+                val placeIds = reviews.map { it.kakaoPlaceId }.toSet()
+                val places = withContext(Dispatchers.IO) {
+                    SupabaseManager.client.postgrest["places"]
+                        .select()
+                        .decodeList<PlaceSummaryDto>()
+                        .filter { it.kakaoPlaceId in placeIds }
+                }.associateBy { it.kakaoPlaceId }
+
+                allPlaceMarkers = reviews.groupBy { it.kakaoPlaceId }
+                    .mapNotNull { (placeId, reviewList) ->
+                        val info = places[placeId] ?: return@mapNotNull null
+                        val lat = info.lat ?: return@mapNotNull null
+                        val lng = info.lng ?: return@mapNotNull null
+                        val avgDb = reviewList.map { it.noiseLevelDb }.average()
+                        val avgRating = reviewList.map { it.rating }.average()
+                        val latestReview = reviewList.maxByOrNull { it.createdAt }
+
+                        PlaceMarkerData(
+                            kakaoPlaceId = placeId,
+                            name = info.name ?: getString(R.string.unknown_place_label),
+                            address = info.address ?: "",
+                            latitude = lat,
+                            longitude = lng,
+                            noiseLevel = getNoiseLevelFromDb(avgDb),
+                            rating = avgRating.toFloat(),
+                            noiseValueDb = avgDb.roundToInt(),
+                            reviewCount = reviewList.size,
+                            latestReviewSnippet = latestReview?.text ?: "",
+                            categoryLabel = info.category
+                        )
+                    }
+
+                updateVisibleMarkersForCurrentCamera()
+                lastLoadedCameraCenter = lastKnownCenter
+                lastLoadedZoomLevel = kakaoMap?.cameraPosition?.zoomLevel ?: lastLoadedZoomLevel
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to load place markers", e)
+                if (visiblePlaceMarkers.isEmpty()) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.map_load_reviews_failed),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun applyNoiseFilter(option: String) {
+        currentNoiseFilter = when (option) {
+            getString(R.string.filter_option_optimal) -> NoiseFilter.OPTIMAL
+            getString(R.string.filter_option_good) -> NoiseFilter.GOOD
+            getString(R.string.filter_option_normal) -> NoiseFilter.NORMAL
+            getString(R.string.filter_option_loud) -> NoiseFilter.LOUD
+            else -> NoiseFilter.ALL
+        }
+        renderFilteredMarkers()
+    }
+
+    private fun renderNoiseMarker(place: PlaceMarkerData): Bitmap {
         val inflater = LayoutInflater.from(this)
         val view = inflater.inflate(R.layout.view_noise_marker, null, false)
         view.layoutParams = ViewGroup.LayoutParams(
@@ -639,6 +830,18 @@ class MainActivity : AppCompatActivity() {
         else -> NoiseLevel.LOUD
     }
 
+    private fun calculateDistanceMeters(a: LatLng, b: LatLng): Double {
+        val earthRadius = 6_371_000.0
+        val dLat = Math.toRadians(b.latitude - a.latitude)
+        val dLon = Math.toRadians(b.longitude - a.longitude)
+        val lat1 = Math.toRadians(a.latitude)
+        val lat2 = Math.toRadians(b.latitude)
+        val sinLat = sin(dLat / 2)
+        val sinLon = sin(dLon / 2)
+        val haversine = sinLat * sinLat + sinLon * sinLon * cos(lat1) * cos(lat2)
+        return 2 * earthRadius * asin(min(1.0, sqrt(haversine)))
+    }
+
     @Serializable
     private data class ReviewDto(
         val id: Int,
@@ -676,17 +879,30 @@ class MainActivity : AppCompatActivity() {
         }
         lastKnownCenter = location
         updateCategoryLabels("", emptyList())
-        clearSampleMarkers()
+        clearMarkers()
     }
 
-    private fun openPlaceDetail(placeId: String, name: String, address: String?, category: String?) {
-        Log.d("PlaceIdCheck", "placeId=$placeId, name=$name, address=$address, category=$category")
+    private fun openPlaceDetail(
+        placeId: String,
+        name: String,
+        address: String?,
+        category: String?,
+        lat: Double? = null,
+        lng: Double? = null
+    ) {
+        Log.d(
+            "PlaceIdCheck",
+            "placeId=$placeId, name=$name, address=$address, category=$category, lat=$lat, lng=$lng"
+        )
+
         val intent = PlaceDetailActivity.createIntent(
             context = this,
             placeId = placeId,
             placeName = name,
             address = address,
-            category = category
+            category = category,
+            lat = lat,
+            lng = lng
         )
         startActivity(intent)
     }
@@ -700,11 +916,11 @@ class MainActivity : AppCompatActivity() {
 
         binding.searchEditText.clearFocus()
         binding.categoryChipGroup.clearCheck()
-        showSearchResults(emptyList(), showSamplesWhenEmpty = false)
+        showSearchResults(emptyList(), renderMarkersWhenEmpty = false)
         updateCategoryLabels("", emptyList())
         clearSelectedPlaceMarker()
         closeInfoWindow()
-        clearSampleMarkers()
+        clearMarkers()
 
         lifecycleScope.launch {
             try {
@@ -790,6 +1006,12 @@ class MainActivity : AppCompatActivity() {
         adapter.setDropDownViewResource(R.layout.item_filter_option)
         binding.filterDropdown.setAdapter(adapter)
         binding.filterDropdown.setText(getString(R.string.filter_option_all), false)
+        binding.filterDropdown.setOnItemClickListener { _, _, position, _ ->
+            val selectedOption = filterOptions.getOrNull(position)
+                ?: getString(R.string.filter_option_all)
+            binding.filterDropdown.setText(selectedOption, false)
+            applyNoiseFilter(selectedOption)
+        }
     }
 
     private fun setupMyLocationButton() {
@@ -954,7 +1176,13 @@ class MainActivity : AppCompatActivity() {
         LOUD(R.string.noise_level_loud)
     }
 
-    private data class PlaceUiSample(
+    private enum class NoiseFilter {
+        ALL, OPTIMAL, GOOD, NORMAL, LOUD
+    }
+
+    private var currentNoiseFilter: NoiseFilter = NoiseFilter.ALL
+
+    private data class PlaceMarkerData(
         val kakaoPlaceId: String,
         val name: String,
         val address: String,
@@ -965,129 +1193,16 @@ class MainActivity : AppCompatActivity() {
         val noiseValueDb: Int,
         val reviewCount: Int,
         val latestReviewSnippet: String,
-        val categoryLabel: String = ""
+        val categoryLabel: String? = null
     )
 
-    private val samplePlaces = listOf(
-        PlaceUiSample(
-            kakaoPlaceId = "10834151",
-            name = "투썸플레이스 노원공릉점",
-            address = "서울 노원구 동일로192길 52 1층",
-            latitude = 37.62569501,
-            longitude = 127.0784260,
-            noiseLevel = NoiseLevel.OPTIMAL,
-            rating = 4.6f,
-            noiseValueDb = 42,
-            reviewCount = 12,
-            latestReviewSnippet = "카페 내 음악 볼륨이 낮아서 조용했어요."
-        ),
-        PlaceUiSample(
-            kakaoPlaceId = "18520333",
-            name = "파운드그레도",
-            address = "서울 노원구 동일로 1102 1층",
-            latitude = 37.62624471,
-            longitude = 127.0784260,
-            noiseLevel = NoiseLevel.GOOD,
-            rating = 4.4f,
-            noiseValueDb = 48,
-            reviewCount = 7,
-            latestReviewSnippet = "오후엔 주변이 살짝 붐비지만 대화는 무난해요."
-        ),
-        PlaceUiSample(
-            kakaoPlaceId = "20923010",
-            name = "코타브레드",
-            address = "서울 노원구 공릉로 165 1층",
-            latitude = 37.62624471,
-            longitude = 127.0772097,
-            noiseLevel = NoiseLevel.NORMAL,
-            rating = 4.2f,
-            noiseValueDb = 58,
-            reviewCount = 5,
-            latestReviewSnippet = "빵 굽는 소리랑 손님들 대화가 은근 크게 들려요."
-        ),
-        PlaceUiSample(
-            kakaoPlaceId = "19374025",
-            name = "무이로커피",
-            address = "서울 노원구 동일로186길 77-7 명문빌딩 1층",
-            latitude = 37.62319451,
-            longitude = 127.0766327,
-            noiseLevel = NoiseLevel.OPTIMAL,
-            rating = 4.7f,
-            noiseValueDb = 39,
-            reviewCount = 9,
-            latestReviewSnippet = "콘센트 많고 조용해서 작업하기 좋아요."
-        ),
-        PlaceUiSample(
-            kakaoPlaceId = "20786938",
-            name = "블루마일스커피로스터즈",
-            address = "서울 노원구 동일로190길 65 우화빌딩 2층",
-            latitude = 37.62536851,
-            longitude = 127.0776785,
-            noiseLevel = NoiseLevel.GOOD,
-            rating = 4.5f,
-            noiseValueDb = 50,
-            reviewCount = 6,
-            latestReviewSnippet = "로스터기 돌아가는 소리가 조금 있지만 무난해요."
-        ),
-        PlaceUiSample(
-            kakaoPlaceId = "15674001",
-            name = "칼퇴근김대리 공릉점",
-            address = "서울 노원구 동일로192길 53 1층",
-            latitude = 37.62580571,
-            longitude = 127.0778897,
-            noiseLevel = NoiseLevel.LOUD,
-            rating = 4.1f,
-            noiseValueDb = 68,
-            reviewCount = 10,
-            latestReviewSnippet = "저녁에는 사람들이 많아서 꽤 시끄러워요."
-        ),
-        PlaceUiSample(
-            kakaoPlaceId = "15858055",
-            name = "스타벅스 공릉역점",
-            address = "서울 노원구 동일로 1081",
-            latitude = 37.62243271,
-            longitude = 127.0780287,
-            noiseLevel = NoiseLevel.NORMAL,
-            rating = 4.3f,
-            noiseValueDb = 55,
-            reviewCount = 21,
-            latestReviewSnippet = "출퇴근 시간대엔 자리 찾기 힘들고 소음도 커요."
-        ),
-        PlaceUiSample(
-            kakaoPlaceId = "23011311",
-            name = "역전할머니맥주 서울공릉점",
-            address = "서울 노원구 동일로192길 80 1층",
-            latitude = 37.62640571,
-            longitude = 127.0778897,
-            noiseLevel = NoiseLevel.LOUD,
-            rating = 4.0f,
-            noiseValueDb = 72,
-            reviewCount = 3,
-            latestReviewSnippet = "술집 분위기라 음악과 대화 소리가 크네요."
-        ),
-        PlaceUiSample(
-            kakaoPlaceId = "16397395",
-            name = "술잔에타",
-            address = "서울 노원구 공릉로51길 7 1층",
-            latitude = 37.62885971,
-            longitude = 127.0818817,
-            noiseLevel = NoiseLevel.LOUD,
-            rating = 4.2f,
-            noiseValueDb = 70,
-            reviewCount = 4,
-            latestReviewSnippet = "주말 밤에는 거의 떠들썩한 편."
-        ),
-        PlaceUiSample(
-            kakaoPlaceId = "15364843",
-            name = "아너카페",
-            address = "서울 노원구 동일로192다길 9 A동 1-2층",
-            latitude = 37.62479571,
-            longitude = 127.0784260,
-            noiseLevel = NoiseLevel.GOOD,
-            rating = 4.6f,
-            noiseValueDb = 52,
-            reviewCount = 14,
-            latestReviewSnippet = "적당한 음악과 조용한 좌석이 많아요."
-        )
+    @Serializable
+    private data class PlaceSummaryDto(
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        val name: String? = null,
+        val address: String? = null,
+        val lat: Double? = null,
+        val lng: Double? = null,
+        val category: String? = null
     )
 }
