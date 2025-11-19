@@ -3,11 +3,14 @@ package com.example.silentzonefinder_android
 import android.Manifest
 import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.util.Log
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
@@ -15,8 +18,16 @@ import androidx.annotation.RequiresPermission
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.example.silentzonefinder_android.databinding.ActivityNewReviewBinding // 1. 바인딩 클래스 import
-import java.util.UUID
+import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
+import com.example.silentzonefinder_android.databinding.ActivityNewReviewBinding
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.auth.auth
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 class NewReviewActivity : AppCompatActivity() {
     private lateinit var binding: ActivityNewReviewBinding
@@ -33,47 +44,207 @@ class NewReviewActivity : AppCompatActivity() {
     private val BUFFER_SIZE = AudioRecord.getMinBufferSize(RECORDER_SAMPLERATE, RECORDER_CHANNELS, RECORDER_AUDIO_ENCODING)
     private var finalMeasuredDb: Int = 0 // 측정된 최종 dB 값을 저장할 변수
 
+    // Intent로 받은 장소 정보
+    private var kakaoPlaceId: String = ""
+    private var placeName: String = ""
+    private var address: String = ""
+    private var lat: Double? = null
+    private var lng: Double? = null
+
+    companion object {
+        private const val TAG = "NewReviewActivity"
+        private const val EXTRA_KAKAO_PLACE_ID = "extra_kakao_place_id"
+        private const val EXTRA_PLACE_NAME = "extra_place_name"
+        private const val EXTRA_ADDRESS = "extra_address"
+        private const val EXTRA_LAT = "extra_lat"
+        private const val EXTRA_LNG = "extra_lng"
+
+        fun createIntent(
+            context: Context,
+            kakaoPlaceId: String,
+            placeName: String,
+            address: String,
+            lat: Double? = null,
+            lng: Double? = null
+        ): Intent {
+            return Intent(context, NewReviewActivity::class.java).apply {
+                putExtra(EXTRA_KAKAO_PLACE_ID, kakaoPlaceId)
+                putExtra(EXTRA_PLACE_NAME, placeName)
+                putExtra(EXTRA_ADDRESS, address)
+                lat?.let { putExtra(EXTRA_LAT, it) }
+                lng?.let { putExtra(EXTRA_LNG, it) }
+            }
+        }
+    }
+
     // 최종 dB 값을 리턴하는 간단한 함수 (Getter 역할)
     private fun getFinalDecibelValue(): Int {
         return finalMeasuredDb
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityNewReviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Intent에서 장소 정보 받기
+        kakaoPlaceId = intent.getStringExtra(EXTRA_KAKAO_PLACE_ID) ?: ""
+        placeName = intent.getStringExtra(EXTRA_PLACE_NAME).orEmpty()
+        address = intent.getStringExtra(EXTRA_ADDRESS).orEmpty()
+        lat = intent.getDoubleExtra(EXTRA_LAT, Double.NaN).takeIf { !it.isNaN() }
+        lng = intent.getDoubleExtra(EXTRA_LNG, Double.NaN).takeIf { !it.isNaN() }
+
+        if (kakaoPlaceId.isBlank()) {
+            Toast.makeText(this, "장소 정보가 없습니다.", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
         // 툴바 설정 (뒤로가기 버튼 및 타이틀)
-        setSupportActionBar(binding.toolbar) // XML에 정의한 Toolbar 사용
+        setSupportActionBar(binding.toolbar)
         supportActionBar?.apply {
-            title = "New Review" // 툴바 타이틀 설정
-            setDisplayHomeAsUpEnabled(true) // 뒤로가기 화살표 활성화
+            title = "New Review"
+            setDisplayHomeAsUpEnabled(true)
         }
         checkAudioPermission()
         setupSubmitButton()
     }
-
-    // 💡 [삭제] 임시값 설정: 실제 구현 시에는 로그인 세션 및 이전 화면에서 전달받은 값 사용 필수
-    private val DUMMY_USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000000")
-    private val DUMMY_PLACE_ID = "Kakao_12345"
     private fun setupSubmitButton() {
         binding.btnSubmitReview.setOnClickListener {
-            // 1. 별점 값 읽기 (Float 타입)
+            // 1. 별점 값 읽기
             val ratingFloat = binding.ratingBar.rating
-            // Int 타입으로 변환
-            val ratingInt = ratingFloat.toInt()
+            val ratingInt = ratingFloat.toInt().coerceIn(1, 5)
 
             // 2. 리뷰 텍스트 읽기
-            val reviewText = binding.etReview.text.toString()
+            val reviewText = binding.etReview.text.toString().trim()
 
-            // 4. (TODO: 태그 값 읽기)
+            // 3. 측정된 dB 값
+            val noiseLevelDb = finalMeasuredDb.toDouble()
 
-            // 5. Room 데이터베이스 저장 함수 호출 시 Int 값을 사용
-            // saveReviewData(ratingInt, reviewText, tags)
+            // 4. 유효성 검사
+            if (ratingInt == 0) {
+                Toast.makeText(this, "별점을 선택해주세요.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
 
-            // 6. 화면 복귀 호출 (아래 2단계에서 구현)
-            returnToPreviousScreen()
+            if (noiseLevelDb <= 0) {
+                Toast.makeText(this, "소음을 측정해주세요.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // 5. 리뷰 저장
+            saveReviewToSupabase(ratingInt, reviewText, noiseLevelDb)
         }
     }
+
+    private fun saveReviewToSupabase(rating: Int, text: String, noiseLevelDb: Double) {
+        lifecycleScope.launch {
+            binding.btnSubmitReview.isEnabled = false
+            // ProgressBar가 있다면 표시 (레이아웃에 없을 수 있음)
+            try {
+                val progressBar = binding.root.findViewById<View>(R.id.progressBar)
+                progressBar?.isVisible = true
+            } catch (e: Exception) {
+                // ProgressBar가 없어도 계속 진행
+            }
+
+            try {
+                // 1. 현재 로그인한 사용자 ID 가져오기
+                val currentSession = withContext(Dispatchers.IO) {
+                    try {
+                        SupabaseManager.client.auth.currentSessionOrNull()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to get current session", e)
+                        null
+                    }
+                }
+
+                if (currentSession == null) {
+                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                val user = currentSession.user
+                if (user == null) {
+                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                val userId = user.id.toString()
+
+                // 2. places 테이블에 장소 정보 upsert
+                withContext(Dispatchers.IO) {
+                    try {
+                        val placeData = buildMap<String, Any> {
+                            put("kakao_place_id", kakaoPlaceId)
+                            put("name", placeName)
+                            put("address", address)
+                            lat?.let { put("lat", it) }
+                            lng?.let { put("lng", it) }
+                        }
+
+                        SupabaseManager.client.postgrest["places"]
+                            .upsert(placeData) {
+                                onConflict = "kakao_place_id"
+                            }
+                        Log.d(TAG, "Place upserted: $kakaoPlaceId")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to upsert place", e)
+                        // places 테이블 upsert 실패해도 리뷰 저장은 계속 진행
+                    }
+                }
+
+                // 3. reviews 테이블에 리뷰 저장
+                val reviewData = ReviewInsertDto(
+                    kakaoPlaceId = kakaoPlaceId,
+                    userId = userId,
+                    rating = rating,
+                    text = text,
+                    images = null, // 현재는 이미지 없음
+                    noiseLevelDb = noiseLevelDb
+                )
+
+                withContext(Dispatchers.IO) {
+                    SupabaseManager.client.postgrest["reviews"]
+                        .insert(reviewData)
+                }
+
+                Log.d(TAG, "Review saved successfully")
+                Toast.makeText(this@NewReviewActivity, "리뷰가 저장되었습니다.", Toast.LENGTH_SHORT).show()
+
+                // 4. 성공 시 이전 화면으로 복귀
+                setResult(RESULT_OK)
+                finish()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to save review", e)
+                Toast.makeText(
+                    this@NewReviewActivity,
+                    "리뷰 저장에 실패했습니다: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            } finally {
+                binding.btnSubmitReview.isEnabled = true
+                // ProgressBar가 있다면 숨김
+                try {
+                    val progressBar = binding.root.findViewById<View>(R.id.progressBar)
+                    progressBar?.isVisible = false
+                } catch (e: Exception) {
+                    // ProgressBar가 없어도 계속 진행
+                }
+            }
+        }
+    }
+
+    @Serializable
+    private data class ReviewInsertDto(
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("user_id") val userId: String,
+        val rating: Int,
+        val text: String,
+        val images: List<String>? = null,
+        @SerialName("noise_level_db") val noiseLevelDb: Double
+    )
     private fun getSelectedAmenities(): String {
         val selectedChips = mutableListOf<String>()
 
@@ -92,13 +263,6 @@ class NewReviewActivity : AppCompatActivity() {
         return selectedChips.joinToString(", ")
     }
 
-    private fun returnToPreviousScreen() {
-        // RESULT_OK는 작업이 성공적으로 완료되었음을 의미합니다.
-        setResult(RESULT_OK)
-
-        // 현재 Activity를 스택에서 제거하여 이전 화면으로 돌아갑니다.
-        finish()
-    }
 
     // 툴바의 뒤로가기 버튼 클릭 이벤트 처리
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
