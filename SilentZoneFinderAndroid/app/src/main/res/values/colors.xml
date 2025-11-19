@@ -14,4 +14,35 @@
     <color name="green">#4CAF50</color>
     <color name="light_grey">#E0E0E0</color>
     <color name="red">#F44336</color>
+    <color name="filter_indicator_all">#5F6368</color>
+    <color name="filter_indicator_optimal">#0DBB80</color>
+    <color name="filter_indicator_good">#F4B400</color>
+    <color name="filter_indicator_normal">#FB8C00</color>
+    <color name="filter_indicator_loud">#EA4335</color>
+
+    <!-- Place detail palette -->
+    <color name="primary_purple">#6C5DD3</color>
+    <color name="primary_purple_light">#EAE4FF</color>
+    <color name="place_detail_background">#FFFFFFFF</color>
+    <color name="place_detail_card_background">#FFFFFFFF</color>
+    <color name="place_detail_card_stroke">#F0F0F0</color>
+    <color name="place_detail_primary_text">#1F1747</color>
+    <color name="place_detail_secondary_text">#6C6484</color>
+    <color name="place_detail_outline_button">#A592FF</color>
+
+    <!-- Neutral surfaces (Map / Reviews) -->
+    <color name="surface_neutral">#F6F7FB</color>
+    <color name="surface_card">#FFFFFFFF</color>
+    <color name="surface_card_stroke">#E3E5ED</color>
+
+    <!-- Main map chip palette -->
+    <color name="chip_filter_bg">#FFFFFF</color>
+    <color name="chip_filter_stroke">#D8DAE3</color>
+    <color name="chip_filter_text">#1D1F2B</color>
+
+    <!-- Review list palette -->
+    <color name="review_card_background">#FFFFFFFF</color>
+    <color name="review_card_stroke">#E4E7F0</color>
+    <color name="filter_button_stroke">#D8DAE3</color>
+    <color name="filter_button_text">#2C2F3A</color>
 </resources>

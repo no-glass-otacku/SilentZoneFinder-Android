@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:name=".MapApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -12,9 +13,19 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.SilentZoneFinderAndroid">
+        android:theme="@style/Theme.SilentZoneFinderAndroid"
+        android:usesCleartextTraffic="true">
+        
+        <!-- 카카오맵 네이티브 앱 키 -->
+        <meta-data
+            android:name="com.kakao.sdk.AppKey"
+            android:value="${KAKAO_NATIVE_APP_KEY}" />
+        
         <activity
             android:name=".NewReviewActivity"
+            android:exported="false" />
+        <activity
+            android:name=".EditReviewActivity"
             android:exported="false" />
         <activity
             android:name=".MyFavoritesActivity"
@@ -32,6 +43,9 @@
             android:name=".MyReviewsActivity"
             android:exported="false" />
         <activity
+            android:name=".PlaceDetailActivity"
+            android:exported="false" />
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
@@ -47,6 +61,9 @@
             android:theme="@style/Theme.SilentZoneFinderAndroid" />
     </application>
 
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
 </manifest>
