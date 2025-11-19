@@ -1,131 +1,127 @@
 package com.example.silentzonefinder_android.adapter
 
-// com.example.silentzonefinder_android.adapter.ReviewAdapter.kt
-
+import android.graphics.drawable.GradientDrawable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.silentzonefinder_android.R
-import com.example.silentzonefinder_android.data.Review
-import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.DrawableCompat
+import com.example.silentzonefinder_android.databinding.ItemReviewBinding
+import kotlin.math.roundToInt
 
-class ReviewAdapter(private var reviewList: List<Review>) :
-    RecyclerView.Adapter<ReviewAdapter.ReviewViewHolder>() {
+data class ReviewUiModel(
+    val id: Int,
+    val rating: Int,
+    val text: String,
+    val noiseLevelDb: Double,
+    val createdDate: String,
+    val amenities: List<String> = emptyList()
+)
 
-    // 1. ViewHolder (item_review.xml의 View들을 미리 저장)
-    inner class ReviewViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        // XML View 요소들을 findViewById()로 연결
-        val tvPlaceName: TextView = itemView.findViewById(R.id.tvPlaceName)
-        val tvDecibel: TextView = itemView.findViewById(R.id.tvDecibel)
-        val tvStatusBadge: TextView = itemView.findViewById(R.id.tvStatusBadge)
-        val tvRating: TextView = itemView.findViewById(R.id.tvRating)
-        val tvDate: TextView = itemView.findViewById(R.id.tvDate)
-        val tvReviewText: TextView = itemView.findViewById(R.id.tvReviewText)
-        val amenityTagsLayout: LinearLayout = itemView.findViewById(R.id.amenityTagsLayout)
-    }
+class ReviewAdapter :
+    ListAdapter<ReviewUiModel, ReviewAdapter.ReviewViewHolder>(DiffCallback) {
 
-    // 2. onCreateViewHolder (ViewHolder 상자를 만듭니다)
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ReviewViewHolder {
-        // item_review.xml을 읽어와서 View 객체로 만듭니다.
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_review, parent, false)
-        return ReviewViewHolder(view)
+        val inflater = LayoutInflater.from(parent.context)
+        val binding = ItemReviewBinding.inflate(inflater, parent, false)
+        return ReviewViewHolder(binding)
     }
 
-    // 3. onBindViewHolder (데이터를 View에 채웁니다)
     override fun onBindViewHolder(holder: ReviewViewHolder, position: Int) {
-        val currentReview = reviewList[position] // 현재 위치의 리뷰 데이터를 가져옵니다.
-        val context = holder.itemView.context
+        holder.bind(getItem(position))
+    }
 
-        // 데이터 설정
-        holder.tvPlaceName.text = currentReview.placeName
-        holder.tvDecibel.text = "${currentReview.decibel} dB"
-        holder.tvStatusBadge.text = currentReview.status
+    class ReviewViewHolder(
+        private val binding: ItemReviewBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
 
-        // 평점 (별표)
-        val ratingStars = getStars(currentReview.rating)
-        holder.tvRating.text = "$ratingStars"
-
-        holder.tvDate.text = "• ${currentReview.date}"
-
-        holder.tvReviewText.text = currentReview.reviewText
-
-        // --- 태그 동적 생성 ---
-        // 1. 기존 태그 초기화 (재활용을 위해 중요)
-        holder.amenityTagsLayout.removeAllViews()
-
-        // 2. amenityTags 리스트를 돌며 태그 TextView를 생성
-        currentReview.amenities.forEach { amenity ->
-            val tagView = TextView(context).apply {
-                text = amenity
-                textSize = 12f
-
-                // 드로어블 리소스인 rounded_shape_bg.xml을 배경으로 설정
-                background = ContextCompat.getDrawable(context, R.drawable.rounded_shape_bg)
-
-                // 패딩 설정 (dp 값을 픽셀 값으로 변환하는 함수를 사용해야 하지만, 간단하게 하드코딩)
-                setPadding(dpToPx(context, 8), dpToPx(context, 4), dpToPx(context, 8), dpToPx(context, 4))
+        fun bind(item: ReviewUiModel) {
+            setupRatingStars(binding.ratingStarsLayout, item.rating)
+            binding.noiseDbTextView.text = "${item.noiseLevelDb.roundToInt()} dB"
+            
+            val (statusText, statusColorRes) = getNoiseStatus(item.noiseLevelDb)
+            binding.noiseStatusBadge.text = statusText
+            val backgroundDrawable = ContextCompat.getDrawable(binding.root.context, R.drawable.bg_status_badge)
+            if (backgroundDrawable is GradientDrawable) {
+                backgroundDrawable.setColor(ContextCompat.getColor(binding.root.context, statusColorRes))
+                binding.noiseStatusBadge.background = backgroundDrawable
             }
-            // LayoutParams 설정 (태그 간 간격)
-            val params = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginEnd = dpToPx(context, 8) // 태그 사이에 8dp 간격
+            
+            binding.reviewTextView.text = item.text
+            binding.dateTextView.text = item.createdDate
+            
+            setupAmenities(binding.amenitiesLayout, item.amenities)
+        }
+
+        private fun setupRatingStars(layout: LinearLayout, rating: Int) {
+            layout.removeAllViews()
+            val context = layout.context
+            val starSize = context.resources.getDimensionPixelSize(R.dimen.star_size)
+            
+            for (i in 1..5) {
+                val imageView = ImageView(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(starSize, starSize).apply {
+                        marginEnd = if (i < 5) 4.dpToPx(context) else 0
+                    }
+                    setImageResource(if (i <= rating) R.drawable.ic_star_filled else R.drawable.ic_star_empty)
+                    scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                }
+                layout.addView(imageView)
             }
-            tagView.layoutParams = params
-
-            // LinearLayout에 태그 추가
-            holder.amenityTagsLayout.addView(tagView)
-        }
-        // -------------------------------------------------------------------
-
-        // 참고: 상태 배지 색상 변경
-        // 1. 상태에 맞는 색상 ID(R.color....)를 가져옵니다.
-        val colorResId = when (currentReview.status) {
-            "Library Quiet" -> R.color.library_quiet_color
-            "Quiet Conversation" -> R.color.quiet_conversation_color
-            "Lively Chatter" -> R.color.lively_chatter_color
-            "High Traffic" -> R.color.high_traffic_color
-            else -> R.color.black // 기본 색상 설정
         }
 
-        // 2. badge_shape.xml 드로어블 객체를 가져옵니다.
-        val backgroundDrawable = ContextCompat.getDrawable(context, R.drawable.badge_shape)
+        private fun setupAmenities(layout: LinearLayout, amenities: List<String>) {
+            layout.removeAllViews()
+            if (amenities.isEmpty()) {
+                layout.visibility = View.GONE
+                return
+            }
+            
+            layout.visibility = View.VISIBLE
+            val context = layout.context
+            
+            amenities.forEach { amenity ->
+                val chip = TextView(context).apply {
+                    text = amenity
+                    textSize = 11f
+                    setPadding(8.dpToPx(context), 4.dpToPx(context), 8.dpToPx(context), 4.dpToPx(context))
+                    background = ContextCompat.getDrawable(context, R.drawable.rounded_shape_bg)
+                    setTextColor(ContextCompat.getColor(context, R.color.grey_dark))
+                }
+                val params = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    marginEnd = 6.dpToPx(context)
+                }
+                chip.layoutParams = params
+                layout.addView(chip)
+            }
+        }
 
-        // 3. 드로어블에 색상을 입힙니다.
-        if (backgroundDrawable != null) {
-            val wrappedDrawable = DrawableCompat.wrap(backgroundDrawable).mutate()
-            val color = ContextCompat.getColor(context, colorResId)
-            DrawableCompat.setTint(wrappedDrawable, color)
+        private fun getNoiseStatus(db: Double): Pair<String, Int> = when (db) {
+            in 0.0..45.0 -> "Optimal" to R.color.filter_indicator_optimal
+            in 45.0..55.0 -> "Good" to R.color.filter_indicator_good
+            in 55.0..65.0 -> "Normal" to R.color.filter_indicator_normal
+            else -> "Loud" to R.color.filter_indicator_loud
+        }
 
-            // 4. 배경으로 설정합니다.
-            holder.tvStatusBadge.background = wrappedDrawable
+        private fun Int.dpToPx(context: android.content.Context): Int {
+            return (this * context.resources.displayMetrics.density).toInt()
         }
     }
 
-    // 4. getItemCount (총 데이터 개수)
-    override fun getItemCount(): Int {
-        return reviewList.size
-    }
+    private object DiffCallback : DiffUtil.ItemCallback<ReviewUiModel>() {
+        override fun areItemsTheSame(oldItem: ReviewUiModel, newItem: ReviewUiModel): Boolean =
+            oldItem.id == newItem.id
 
-    fun updateReviews(newReviews: List<Review>) {
-        // 정렬 전 리뷰 리스트(this.reviewList)를 정렬 후 리뷰 리스트(newReviews)로 교체합니다.
-        this.reviewList = newReviews
-        // 2. ReviewAdapter가 RecyclerView(전광판)에게 "바뀌었으니까 화면 싹 지우고 새로 그려!" 라고 신호를 보냅니다.
-        notifyDataSetChanged()
-    }
-
-    // --- 헬퍼 함수 ---
-    private fun getStars(rating: Int): String {
-        return "★".repeat(rating) + "☆".repeat(5 - rating) // 5점 만점 기준 별표 생성
-    }
-
-    private fun dpToPx(context: android.content.Context, dp: Int): Int {
-        return (dp * context.resources.displayMetrics.density).toInt()
+        override fun areContentsTheSame(oldItem: ReviewUiModel, newItem: ReviewUiModel): Boolean =
+            oldItem == newItem
     }
 }

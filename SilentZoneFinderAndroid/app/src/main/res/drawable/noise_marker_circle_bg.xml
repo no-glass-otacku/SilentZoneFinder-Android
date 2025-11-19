@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <size
+        android:width="44dp"
+        android:height="44dp" />
+    <!-- 더 투명한 흰색 배경 (약 70% 불투명도) -->
+    <solid android:color="#B3FFFFFF" />
+    <!-- 테두리 색상 (동적으로 변경됨, 더 두껍게) -->
+    <stroke
+        android:width="4dp"
+        android:color="#FF1E88E5" />
+</shape>
+
