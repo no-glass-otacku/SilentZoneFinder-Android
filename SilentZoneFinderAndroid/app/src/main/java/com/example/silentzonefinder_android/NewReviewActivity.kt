@@ -50,6 +50,10 @@ class NewReviewActivity : AppCompatActivity() {
     private var address: String = ""
     private var lat: Double? = null
     private var lng: Double? = null
+    
+    // 수정 모드 관련 변수
+    private var reviewId: Long = -1L
+    private var isEditMode: Boolean = false
 
     companion object {
         private const val TAG = "NewReviewActivity"
@@ -58,6 +62,7 @@ class NewReviewActivity : AppCompatActivity() {
         private const val EXTRA_ADDRESS = "extra_address"
         private const val EXTRA_LAT = "extra_lat"
         private const val EXTRA_LNG = "extra_lng"
+        private const val EXTRA_REVIEW_ID = "extra_review_id"
 
         fun createIntent(
             context: Context,
@@ -68,6 +73,25 @@ class NewReviewActivity : AppCompatActivity() {
             lng: Double? = null
         ): Intent {
             return Intent(context, NewReviewActivity::class.java).apply {
+                putExtra(EXTRA_KAKAO_PLACE_ID, kakaoPlaceId)
+                putExtra(EXTRA_PLACE_NAME, placeName)
+                putExtra(EXTRA_ADDRESS, address)
+                lat?.let { putExtra(EXTRA_LAT, it) }
+                lng?.let { putExtra(EXTRA_LNG, it) }
+            }
+        }
+        
+        fun createEditIntent(
+            context: Context,
+            reviewId: Long,
+            kakaoPlaceId: String,
+            placeName: String,
+            address: String,
+            lat: Double? = null,
+            lng: Double? = null
+        ): Intent {
+            return Intent(context, NewReviewActivity::class.java).apply {
+                putExtra(EXTRA_REVIEW_ID, reviewId)
                 putExtra(EXTRA_KAKAO_PLACE_ID, kakaoPlaceId)
                 putExtra(EXTRA_PLACE_NAME, placeName)
                 putExtra(EXTRA_ADDRESS, address)
@@ -88,6 +112,9 @@ class NewReviewActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         // Intent에서 장소 정보 받기
+        reviewId = intent.getLongExtra(EXTRA_REVIEW_ID, -1L)
+        isEditMode = reviewId > 0
+        
         kakaoPlaceId = intent.getStringExtra(EXTRA_KAKAO_PLACE_ID) ?: ""
         placeName = intent.getStringExtra(EXTRA_PLACE_NAME).orEmpty()
         address = intent.getStringExtra(EXTRA_ADDRESS).orEmpty()
@@ -95,7 +122,7 @@ class NewReviewActivity : AppCompatActivity() {
         lng = intent.getDoubleExtra(EXTRA_LNG, Double.NaN).takeIf { !it.isNaN() }
 
         if (kakaoPlaceId.isBlank()) {
-            Toast.makeText(this, "장소 정보가 없습니다.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.new_review_no_place_info), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -103,12 +130,86 @@ class NewReviewActivity : AppCompatActivity() {
         // 툴바 설정 (뒤로가기 버튼 및 타이틀)
         setSupportActionBar(binding.toolbar)
         supportActionBar?.apply {
-            title = "New Review"
+            title = if (isEditMode) getString(R.string.edit_review_title) else "New Review"
             setDisplayHomeAsUpEnabled(true)
         }
-        checkAudioPermission()
+        
+        if (isEditMode) {
+            // 수정 모드: 기존 리뷰 데이터 로드
+            loadExistingReview()
+            // 저장 버튼 텍스트 변경
+            binding.btnSubmitReview.text = getString(R.string.edit_review_save)
+        } else {
+            // 새 리뷰 모드: 소음 측정 시작
+            checkAudioPermission()
+        }
         setupSubmitButton()
     }
+    
+    private fun loadExistingReview() {
+        lifecycleScope.launch {
+            try {
+                val session = withContext(Dispatchers.IO) {
+                    SupabaseManager.client.auth.currentSessionOrNull()
+                }
+                val userId = session?.user?.id?.toString()
+                if (userId == null) {
+                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
+                    finish()
+                    return@launch
+                }
+
+                val reviewDto = withContext(Dispatchers.IO) {
+                    SupabaseManager.client.postgrest["reviews"]
+                        .select {
+                            filter {
+                                eq("id", reviewId)
+                                eq("user_id", userId)
+                            }
+                        }
+                        .decodeSingle<ReviewDto>()
+                }
+
+                // 기존 리뷰 데이터로 UI 채우기
+                finalMeasuredDb = reviewDto.noiseLevelDb.toInt()
+                binding.ratingBar.rating = reviewDto.rating.toFloat()
+                binding.etReview.setText(reviewDto.text ?: "")
+                
+                // 소음 측정 뷰 숨기고 리뷰 작성 뷰로 바로 이동
+                binding.noiseMeasurementView.visibility = View.GONE
+                binding.reviewWritingView.visibility = View.VISIBLE
+                
+                // 소음 값 표시 (수정 불가)
+                binding.tvFinalDecibel.text = "${finalMeasuredDb}\ndB"
+                binding.tvOptimalText.text = getNoiseStatusText(finalMeasuredDb)
+                
+                // Record Again 버튼 숨기기 (수정 모드에서는 소음 수정 불가)
+                binding.btnRecordAgain.visibility = View.GONE
+                
+                // "Add Your Review" 텍스트를 찾아서 변경 (선택사항)
+                try {
+                    val reviewTitleView = binding.root.findViewById<android.widget.TextView>(R.id.reviewTitleTextView)
+                    reviewTitleView?.text = getString(R.string.edit_review_title)
+                } catch (e: Exception) {
+                    // TextView가 없어도 계속 진행
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load review", e)
+                Toast.makeText(this@NewReviewActivity, getString(R.string.new_review_load_failed), Toast.LENGTH_LONG).show()
+                finish()
+            }
+        }
+    }
+    
+    @Serializable
+    private data class ReviewDto(
+        val id: Long,
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        val rating: Int,
+        val text: String?,
+        @SerialName("noise_level_db") val noiseLevelDb: Double
+    )
     private fun setupSubmitButton() {
         binding.btnSubmitReview.setOnClickListener {
             // 1. 별점 값 읽기
@@ -123,17 +224,21 @@ class NewReviewActivity : AppCompatActivity() {
 
             // 4. 유효성 검사
             if (ratingInt == 0) {
-                Toast.makeText(this, "별점을 선택해주세요.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.new_review_error_rating), Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            if (noiseLevelDb <= 0) {
-                Toast.makeText(this, "소음을 측정해주세요.", Toast.LENGTH_SHORT).show()
+            if (!isEditMode && noiseLevelDb <= 0) {
+                Toast.makeText(this, getString(R.string.new_review_error_noise), Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            // 5. 리뷰 저장
-            saveReviewToSupabase(ratingInt, reviewText, noiseLevelDb)
+            // 5. 리뷰 저장 또는 수정
+            if (isEditMode) {
+                updateReviewToSupabase(ratingInt, reviewText, noiseLevelDb)
+            } else {
+                saveReviewToSupabase(ratingInt, reviewText, noiseLevelDb)
+            }
         }
     }
 
@@ -210,17 +315,91 @@ class NewReviewActivity : AppCompatActivity() {
                 }
 
                 Log.d(TAG, "Review saved successfully")
-                Toast.makeText(this@NewReviewActivity, "리뷰가 저장되었습니다.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@NewReviewActivity, getString(R.string.new_review_save_success), Toast.LENGTH_SHORT).show()
 
                 // 4. 성공 시 이전 화면으로 복귀
                 setResult(RESULT_OK)
                 finish()
-
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to save review", e)
                 Toast.makeText(
                     this@NewReviewActivity,
-                    "리뷰 저장에 실패했습니다: ${e.message}",
+                    getString(R.string.new_review_save_failure, e.message ?: "-"),
+                    Toast.LENGTH_LONG
+                ).show()
+            } finally {
+                binding.btnSubmitReview.isEnabled = true
+                // ProgressBar가 있다면 숨김
+                try {
+                    val progressBar = binding.root.findViewById<View>(R.id.progressBar)
+                    progressBar?.isVisible = false
+                } catch (e: Exception) {
+                    // ProgressBar가 없어도 계속 진행
+                }
+            }
+        }
+    }
+    
+    private fun updateReviewToSupabase(rating: Int, text: String, noiseLevelDb: Double) {
+        lifecycleScope.launch {
+            binding.btnSubmitReview.isEnabled = false
+            try {
+                val progressBar = binding.root.findViewById<View>(R.id.progressBar)
+                progressBar?.isVisible = true
+            } catch (e: Exception) {
+                // ProgressBar가 없어도 계속 진행
+            }
+
+            try {
+                val currentSession = withContext(Dispatchers.IO) {
+                    try {
+                        SupabaseManager.client.auth.currentSessionOrNull()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to get current session", e)
+                        null
+                    }
+                }
+
+                if (currentSession == null) {
+                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                val user = currentSession.user
+                if (user == null) {
+                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                val userId = user.id.toString()
+
+                // 리뷰 업데이트 (소음은 수정 불가이므로 기존 값 유지)
+                withContext(Dispatchers.IO) {
+                    SupabaseManager.client.postgrest["reviews"].update(
+                        mapOf(
+                            "rating" to rating,
+                            "text" to text
+                            // noise_level_db는 수정하지 않음
+                        )
+                    ) {
+                        filter {
+                            eq("id", reviewId)
+                            eq("user_id", userId)
+                        }
+                    }
+                }
+
+                Log.d(TAG, "Review updated successfully")
+                Toast.makeText(this@NewReviewActivity, getString(R.string.new_review_update_success), Toast.LENGTH_SHORT).show()
+
+                setResult(RESULT_OK)
+                finish()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update review", e)
+                Toast.makeText(
+                    this@NewReviewActivity,
+                    getString(R.string.new_review_update_failure, e.message ?: "-"),
                     Toast.LENGTH_LONG
                 ).show()
             } finally {

@@ -43,6 +43,18 @@
         <item name="rippleColor">@color/chip_filter_stroke</item>
     </style>
 
+    <style name="Widget.SZF.Button.Filter" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="cornerRadius">24dp</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="android:textColor">#FF000000</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="iconTint">#FF000000</item>
+        <item name="backgroundTint">@color/surface_card</item>
+        <item name="strokeColor">@color/filter_button_stroke</item>
+    </style>
+
     <style name="MarkerLabelTextStyle" parent="LabelTextStyle">
         <item name="mapTextSize">26</item>
         <item name="mapTextColor">#FFFFFFFF</item>
