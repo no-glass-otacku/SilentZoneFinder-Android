@@ -44,6 +44,16 @@ class MyReviewsAdapter(
             R.string.my_review_noise_format,
             review.decibel
         )
+        // dB 값과 날짜 텍스트 색상 및 폰트를 강제로 설정
+        val blackColor = android.graphics.Color.parseColor("#FF000000")
+        holder.decibelTextView.setTextColor(blackColor)
+        holder.decibelTextView.typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+        holder.decibelTextView.alpha = 1.0f
+        
+        holder.dateTextView.setTextColor(blackColor)
+        holder.dateTextView.typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+        holder.dateTextView.alpha = 1.0f
+        
         holder.statusBadgeTextView.text = review.status
         holder.ratingTextView.text = getStars(review.rating)
         holder.dateTextView.text = review.date

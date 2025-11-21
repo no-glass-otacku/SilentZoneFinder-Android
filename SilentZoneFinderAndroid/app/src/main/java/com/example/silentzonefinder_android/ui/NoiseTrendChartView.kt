@@ -134,3 +134,11 @@ class NoiseTrendChartView @JvmOverloads constructor(
 
 
 
+
+
+
+
+
+
+
+

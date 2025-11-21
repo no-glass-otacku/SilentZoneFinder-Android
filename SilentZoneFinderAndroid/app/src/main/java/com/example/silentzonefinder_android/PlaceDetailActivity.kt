@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.silentzonefinder_android.adapter.ReviewAdapter
 import com.example.silentzonefinder_android.adapter.ReviewUiModel
 import com.example.silentzonefinder_android.databinding.ActivityPlaceDetailBinding
+import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -34,6 +35,9 @@ class PlaceDetailActivity : AppCompatActivity() {
     private var currentLng: Double? = null
     private var allReviewUiModels: List<ReviewUiModel> = emptyList()
     private var currentReviewFilter: ReviewFilter = ReviewFilter.ALL
+    private var currentUserId: String? = null
+    private var isFavorite: Boolean = false
+    private var isFavoriteLoading: Boolean = false
 
     private val newReviewLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -66,6 +70,7 @@ class PlaceDetailActivity : AppCompatActivity() {
         setupNewReviewButton()
         setupHeaderControls()
         setupReviewFilters()
+        loadFavoriteStatus()
         loadReviews(currentPlaceId)
     }
 
@@ -74,7 +79,7 @@ class PlaceDetailActivity : AppCompatActivity() {
             onBackPressedDispatcher.onBackPressed()
         }
         favoriteButton.setOnClickListener {
-            Toast.makeText(this@PlaceDetailActivity, "즐겨찾기 준비 중입니다.", Toast.LENGTH_SHORT).show()
+            toggleFavorite()
         }
         notificationButton.setOnClickListener {
             Toast.makeText(this@PlaceDetailActivity, "알림 기능 준비 중입니다.", Toast.LENGTH_SHORT).show()
@@ -234,6 +239,150 @@ class PlaceDetailActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateFavoriteButtonIcon() {
+        if (isFavorite) {
+            // 즐겨찾기 상태: 채워진 하트 아이콘 사용
+            binding.favoriteButton.setImageResource(R.drawable.ic_favorite)
+            binding.favoriteButton.imageTintList = android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.primary_purple)
+            )
+            binding.favoriteButton.contentDescription = getString(R.string.place_detail_favorite_remove)
+        } else {
+            // 즐겨찾기 아님: 빈 하트 아이콘 사용
+            binding.favoriteButton.setImageResource(R.drawable.ic_favorite_outline)
+            binding.favoriteButton.imageTintList = android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.primary_purple)
+            )
+            binding.favoriteButton.contentDescription = getString(R.string.place_detail_favorite_add)
+        }
+    }
+
+    private fun loadFavoriteStatus() {
+        lifecycleScope.launch {
+            isFavoriteLoading = true
+            try {
+                currentUserId = withContext(Dispatchers.IO) {
+                    SupabaseManager.client.auth.currentSessionOrNull()?.user?.id?.toString()
+                }
+                val userId = currentUserId
+                if (userId == null) {
+                    updateFavoriteButtonIcon()
+                    return@launch
+                }
+
+                val favorites = withContext(Dispatchers.IO) {
+                    SupabaseManager.client.postgrest["favorites"]
+                        .select {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kaka_place_id", currentPlaceId)
+                            }
+                        }
+                        .decodeList<FavoriteDto>()
+                }
+                isFavorite = favorites.isNotEmpty()
+                updateFavoriteButtonIcon()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load favorite status", e)
+                Toast.makeText(
+                    this@PlaceDetailActivity,
+                    getString(R.string.place_detail_favorite_status_failed),
+                    Toast.LENGTH_SHORT
+                ).show()
+            } finally {
+                isFavoriteLoading = false
+            }
+        }
+    }
+
+    private fun toggleFavorite() {
+        if (isFavoriteLoading) return
+        val userId = currentUserId
+        if (userId == null) {
+            Toast.makeText(
+                this,
+                getString(R.string.place_detail_login_required),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        lifecycleScope.launch {
+            isFavoriteLoading = true
+            try {
+                if (isFavorite) {
+                    withContext(Dispatchers.IO) {
+                        SupabaseManager.client.postgrest["favorites"].delete {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kaka_place_id", currentPlaceId)
+                            }
+                        }
+                    }
+                    isFavorite = false
+                    Toast.makeText(
+                        this@PlaceDetailActivity,
+                        getString(R.string.place_detail_favorite_removed),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    // 즐겨찾기 추가 전에 profiles 테이블에 사용자 레코드가 있는지 확인하고 없으면 생성
+                    withContext(Dispatchers.IO) {
+                        try {
+                            // profiles 테이블에 사용자 레코드가 있는지 확인
+                            val existingProfiles = SupabaseManager.client.postgrest["profiles"]
+                                .select {
+                                    filter {
+                                        eq("id", userId)
+                                    }
+                                }
+                                .decodeList<ProfileDto>()
+                            
+                            // 없으면 생성
+                            if (existingProfiles.isEmpty()) {
+                                SupabaseManager.client.postgrest["profiles"].insert(
+                                    ProfileInsertDto(
+                                        id = userId,
+                                        nickname = null,
+                                        avatarUrl = null
+                                    )
+                                )
+                            }
+                        } catch (e: Exception) {
+                            // profiles 조회/생성 실패해도 즐겨찾기 추가는 계속 진행
+                            // (이미 존재하는 경우 등)
+                            Log.d(TAG, "Profile check/creation failed, continuing with favorite", e)
+                        }
+                        
+                        // 즐겨찾기 추가
+                        SupabaseManager.client.postgrest["favorites"].insert(
+                            FavoriteInsertDto(
+                                userId = userId,
+                                kakaoPlaceId = currentPlaceId
+                            )
+                        )
+                    }
+                    isFavorite = true
+                    Toast.makeText(
+                        this@PlaceDetailActivity,
+                        getString(R.string.place_detail_favorite_added),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                updateFavoriteButtonIcon()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to toggle favorite", e)
+                Toast.makeText(
+                    this@PlaceDetailActivity,
+                    getString(R.string.place_detail_favorite_failed),
+                    Toast.LENGTH_LONG
+                ).show()
+            } finally {
+                isFavoriteLoading = false
+            }
+        }
+    }
+
     private fun updateNoiseTrendChart(reviews: List<ReviewUiModel>) {
         if (reviews.size < 2) {
             binding.noiseTrendChart.isVisible = false
@@ -267,6 +416,32 @@ class PlaceDetailActivity : AppCompatActivity() {
     private enum class ReviewFilter {
         ALL, OPTIMAL, GOOD, NORMAL, LOUD
     }
+
+    @Serializable
+    private data class FavoriteDto(
+        @SerialName("user_id") val userId: String,
+        @SerialName("kaka_place_id") val kakaoPlaceId: String
+    )
+
+    @Serializable
+    private data class FavoriteInsertDto(
+        @SerialName("user_id") val userId: String,
+        @SerialName("kaka_place_id") val kakaoPlaceId: String
+    )
+    
+    @Serializable
+    private data class ProfileDto(
+        val id: String,
+        val nickname: String? = null,
+        @SerialName("avatar_url") val avatarUrl: String? = null
+    )
+    
+    @Serializable
+    private data class ProfileInsertDto(
+        val id: String,
+        val nickname: String? = null,
+        @SerialName("avatar_url") val avatarUrl: String? = null
+    )
 
     @Serializable
     private data class ReviewDto(

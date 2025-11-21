@@ -48,6 +48,17 @@ class MyReviewsActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupRecyclerView()
+        
+        // 버튼 텍스트 색상을 코드에서 강제로 설정 (스타일 오버라이드 방지)
+        val blackColor = android.graphics.Color.parseColor("#FF000000")
+        binding.btnFilter.setTextColor(blackColor)
+        binding.btnSort.setTextColor(blackColor)
+        binding.btnFilter.iconTint = android.content.res.ColorStateList.valueOf(blackColor)
+        binding.btnSort.iconTint = android.content.res.ColorStateList.valueOf(blackColor)
+        
+        // 버튼 텍스트 스타일 강제 설정
+        binding.btnFilter.typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+        binding.btnSort.typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
 
         // 필터 버튼 클릭 이벤트 설정
         binding.btnFilter.setOnClickListener { view ->
@@ -95,7 +106,8 @@ class MyReviewsActivity : AppCompatActivity() {
 
         popupMenu.setOnMenuItemClickListener { menuItem ->
             val selectedFilter = menuItem.title.toString()
-            binding.btnFilter.text = selectedFilter // 버튼 텍스트를 선택된 항목으로 변경
+            binding.btnFilter.text = "$selectedFilter ↓" // 버튼 텍스트를 선택된 항목으로 변경
+            binding.btnFilter.setTextColor(android.graphics.Color.parseColor("#FF000000")) // 색상 강제 설정
 
             applyFilter(selectedFilter) // 필터링 로직을 처리하는 함수 호출
             // 굳이 필요없지만 그냥 넣어둠
@@ -121,7 +133,8 @@ class MyReviewsActivity : AppCompatActivity() {
 
         popupMenu.setOnMenuItemClickListener { menuItem ->
             val selectedSort = menuItem.title.toString()
-            binding.btnSort.text = selectedSort
+            binding.btnSort.text = "$selectedSort ↓"
+            binding.btnSort.setTextColor(android.graphics.Color.parseColor("#FF000000")) // 색상 강제 설정
 
             applySort(selectedSort) // 정렬 로직을 처리할 함수 호출
             Toast.makeText(this, "$selectedSort 선택됨", Toast.LENGTH_SHORT).show()
@@ -224,15 +237,14 @@ class MyReviewsActivity : AppCompatActivity() {
     }
 
     private fun openEditReview(review: Review) {
-        val intent = EditReviewActivity.createIntent(
+        val intent = NewReviewActivity.createEditIntent(
             context = this,
             reviewId = review.id,
             kakaoPlaceId = review.kakaoPlaceId,
             placeName = review.placeName,
-            placeAddress = review.placeAddress,
-            rating = review.rating,
-            noiseLevelDb = review.decibel.toDouble(),
-            reviewText = review.reviewText
+            address = review.placeAddress,
+            lat = null,
+            lng = null
         )
         editReviewLauncher.launch(intent)
     }

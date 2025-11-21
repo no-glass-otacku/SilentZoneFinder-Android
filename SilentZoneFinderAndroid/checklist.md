@@ -56,11 +56,11 @@
   - [x] 필터 변경 시 지도 갱신 (NoiseLevel별 재렌더링)
   - [x] 현재 선택된 필터 표시 (AutoCompleteTextView 텍스트 반영)
 
-- [ ] **지도 페이지 UI 요소 구현** (Figma 디자인 반영)
-  - [ ] "서울 지역 조용한 장소" 헤더 텍스트 표시
-  - [ ] "Kakao Maps integration ready" 서브텍스트 표시
-  - [ ] "Silent Zone" 앱 타이틀 헤딩
-  - [ ] Noise Levels 섹션 UI (Optimal 30-45 dB, Good 46-60 dB, Normal 61-70 dB, Loud 70+ dB)
+- [ ] **지도 페이지 UI 요소 구현** (Figma 디자인 반영) - **사용자 요청으로 원래대로 복원**
+  - [ ] "서울 지역 조용한 장소" 헤더 텍스트 표시 (원래대로 복원됨)
+  - [ ] "Kakao Maps integration ready" 서브텍스트 표시 (원래대로 복원됨)
+  - [ ] "Silent Zone" 앱 타이틀 헤딩 (유지)
+  - [ ] Noise Levels 섹션 UI (원래대로 복원됨)
   - [x] 각 장소별 dB 값 표시 (마커에 표시됨)
   - [x] 검색 입력 필드 구현 (키워드 검색 기능 포함)
 
@@ -82,8 +82,9 @@
   - [x] 빈 리뷰/필터 결과 없음 UI 처리 (Figma 스타일 버튼 + 안내 문구)
 
 - [x] **리뷰 수정 기능**
-  - [x] 리뷰 항목 클릭 시 수정 화면으로 이동
+  - [x] 리뷰 항목 클릭 시 수정 화면으로 이동 (NewReviewActivity 재사용)
   - [x] 기존 리뷰 데이터 로드 (별점, 텍스트, dB) *(편의시설은 DB 미지원으로 제외)*
+  - [x] 수정 모드에서 소음(dB) 수정 불가 처리
   - [x] Supabase UPDATE 쿼리 구현
   - [x] 수정 후 목록 갱신
 
@@ -100,21 +101,21 @@
 #### 4. 즐겨찾기 기능
 - [x] **Supabase favorites 테이블 확인**
   - [x] 테이블 스키마 확인: `user_id` (uuid, PK), `kaka_place_id` (text, PK) - 복합 기본키
-  - [ ] ⚠️ 컬럼명 확인: `kaka_place_id` vs `kakao_place_id` (실제 사용 시 확인 필요)
+  - [x] ⚠️ 컬럼명 확인: 실제 스키마는 `kaka_place_id`로 정의됨 (Supabase 이미지 참고)
   - [ ] RLS (Row Level Security) 정책 설정
 
-- [ ] **PlaceDetailActivity에 즐겨찾기 버튼 추가**
-  - [ ] 하트 아이콘 버튼
-  - [ ] 현재 장소가 즐겨찾기인지 확인
-  - [ ] 추가/제거 토글 기능
-  - [ ] UI 상태 업데이트 (채워진/빈 하트)
+- [x] **PlaceDetailActivity에 즐겨찾기 버튼 추가**
+  - [x] 하트 아이콘 버튼
+  - [x] 현재 장소가 즐겨찾기인지 확인
+  - [x] 추가/제거 토글 기능 (Supabase favorites 연동)
+  - [x] UI 상태 업데이트 (채워진/빈 하트)
 
-- [ ] **MyFavoritesActivity 구현**
-  - [ ] 즐겨찾기한 장소 목록 표시
-  - [ ] Supabase에서 현재 사용자의 favorites 조회
-  - [ ] 장소 정보와 평균 소음 수준 표시
-  - [ ] 클릭 시 PlaceDetailActivity로 이동
-  - [ ] 즐겨찾기 해제 기능
+- [x] **MyFavoritesActivity 구현**
+  - [x] 즐겨찾기한 장소 목록 표시
+  - [x] Supabase에서 현재 사용자의 favorites 조회
+  - [x] 장소 정보와 평균 소음 수준 표시
+  - [x] 클릭 시 PlaceDetailActivity로 이동
+  - [x] 즐겨찾기 해제 기능
 
 - [ ] **MainActivity에서 즐겨찾기 마커 표시**
   - [ ] 즐겨찾기한 장소는 별도 마커 스타일 적용
@@ -129,9 +130,9 @@
   - [x] 지도 초기 위치를 현재 위치로 설정 (moveToCurrentLocation 함수)
   - [x] 카테고리 검색 시 현재 위치 기준 반경 검색 (radius: 1000m)
 
-- [ ] **현재 위치 마커 표시**
-  - [ ] 파란색 점으로 현재 위치 표시
-  - [ ] 위치 업데이트 시 마커 이동
+- [x] **현재 위치 마커 표시**
+  - [x] 파란색 점으로 현재 위치 표시
+  - [x] 위치 업데이트 시 마커 이동
 
 #### 6. 장소 상세 페이지 UI 구현 (Figma: PlaceDetailPage)
 - [x] **장소 정보 표시**
@@ -487,11 +488,11 @@ CREATE TABLE profiles (
 - Supabase UPDATE/DELETE 쿼리 구현
 - **완료 시**: 사용자가 자신의 리뷰를 관리할 수 있음
 
-**2-2. 즐겨찾기 기능** (P1-4)
-- ⚠️ favorites 테이블 컬럼명 확인 (`kaka_place_id` vs `kakao_place_id`)
-- PlaceDetailActivity에 즐겨찾기 버튼 추가
-- MyFavoritesActivity 구현
-- MainActivity에서 즐겨찾기 마커 표시
+**2-2. 즐겨찾기 기능** (P1-4) ✅ **부분 완료**
+- [x] ⚠️ favorites 테이블 컬럼명 확인 (`kaka_place_id` vs `kakao_place_id`)
+- [x] PlaceDetailActivity에 즐겨찾기 버튼 추가
+- [x] MyFavoritesActivity 구현
+- [ ] MainActivity에서 즐겨찾기 마커 표시
 - **완료 시**: 사용자가 좋아하는 장소를 저장하고 관리할 수 있음
 
 **2-3. 샘플 데이터 제거 및 정리**
@@ -567,19 +568,28 @@ CREATE TABLE profiles (
 
 - **Phase 0 (완료)**: 기본 인프라 및 핵심 UI ✅
 - **Phase 1-1 (완료)**: 리뷰 저장 기능 구현 ✅
-- **Phase 1-2 (진행 중)**: MyReviewsActivity Supabase 연동
+- **Phase 1-2 (완료)**: MyReviewsActivity Supabase 연동 ✅
 - **Phase 1-3 (완료)**: 필터 드롭다운 실제 필터링 로직 ✅
+- **Phase 2-1 (완료)**: 리뷰 수정/삭제 기능 ✅
+- **Phase 2-2 (부분 완료)**: 즐겨찾기 기능 (MyFavoritesActivity 구현 완료, 마커 표시 대기) ✅
+- **Phase 2-5 (완료)**: 현재 위치 마커 표시 ✅
+- **Phase 3-3 (완료)**: 지도 페이지 UI 개선 (Figma 디자인 반영) ✅
 - **Phase 2-5 (대기 중)**: 기능 확장 및 개선
 
 ### 💡 다음 작업 권장사항
 
-**즉시 시작할 작업 (Phase 1-2)**:
-1. MyReviewsActivity에서 `loadDummyData()` 제거
-2. Supabase에서 현재 로그인한 사용자의 리뷰만 조회 (`user_id`로 필터링)
-3. 로딩 상태 표시 (ProgressBar)
-4. 빈 리뷰 목록 처리
+**즉시 시작할 작업**:
+1. **MainActivity에서 즐겨찾기 마커 표시** (P1-4)
+   - 즐겨찾기한 장소는 별도 마커 스타일 적용
+   - 완료 시: 지도에서 즐겨찾기 장소를 쉽게 식별 가능
 
-이 작업을 완료하면 사용자가 자신이 작성한 리뷰를 확인할 수 있습니다.
+2. **지도 줌/이동 시 주변 리뷰 데이터 자동 로드** (P0-2)
+   - 현재 화면 영역 내 장소들의 리뷰 조회
+   - 완료 시: 지도 이동 시 주변 장소 자동 로드
+
+3. **Noise Trend Today 그래프** (P1-6)
+   - 시간대별 소음 수준 그래프/차트 표시
+   - 완료 시: 장소의 시간대별 소음 패턴을 시각적으로 확인 가능
 
 ---
 
