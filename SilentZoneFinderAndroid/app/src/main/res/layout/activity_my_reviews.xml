@@ -38,23 +38,16 @@
             <!-- 필터 버튼 -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnFilter"
-                style="@style/Widget.Material3.Button.OutlinedButton"
+                style="@style/Widget.SZF.Button.Filter"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:text="All Reviews ↓"
                 android:textAllCaps="false"
-                android:textColor="@color/filter_button_text"
-                android:textSize="13sp"
-                app:backgroundTint="@color/surface_card"
-                app:cornerRadius="24dp"
                 app:icon="@drawable/ic_filter"
                 app:iconGravity="textStart"
                 app:iconPadding="6dp"
-                app:iconTint="@color/filter_button_text"
-                app:rippleColor="@color/chip_filter_stroke"
-                app:strokeColor="@color/filter_button_stroke"
-                app:strokeWidth="1dp" />
+                app:rippleColor="@color/chip_filter_stroke" />
 
             <!-- ✅ 남는 공간을 모두 차지할 스페이서 추가 -->
             <View
@@ -65,22 +58,15 @@
             <!-- 정렬 버튼 -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnSort"
-                style="@style/Widget.Material3.Button.OutlinedButton"
+                style="@style/Widget.SZF.Button.Filter"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Most Recent ↓"
                 android:textAllCaps="false"
-                android:textColor="@color/filter_button_text"
-                android:textSize="13sp"
-                app:backgroundTint="@color/surface_card"
-                app:cornerRadius="24dp"
                 app:icon="@drawable/ic_sort"
                 app:iconGravity="textStart"
                 app:iconPadding="6dp"
-                app:iconTint="@color/filter_button_text"
-                app:rippleColor="@color/chip_filter_stroke"
-                app:strokeColor="@color/filter_button_stroke"
-                app:strokeWidth="1dp" />
+                app:rippleColor="@color/chip_filter_stroke" />
 
         </LinearLayout>
 

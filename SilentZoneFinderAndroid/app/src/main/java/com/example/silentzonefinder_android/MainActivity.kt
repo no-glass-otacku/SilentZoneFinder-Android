@@ -90,6 +90,7 @@ class MainActivity : AppCompatActivity() {
     private var allPlaceMarkers: List<PlaceMarkerData> = emptyList()
     private var visiblePlaceMarkers: List<PlaceMarkerData> = emptyList()
     private var selectedPlaceLabelId: String? = null
+    private var currentLocationLabelId: String? = null
     private var cameraMoveReloadJob: Job? = null
     private var lastLoadedCameraCenter: LatLng? = null
     private var lastLoadedZoomLevel: Int = -1
@@ -830,6 +831,67 @@ class MainActivity : AppCompatActivity() {
         else -> NoiseLevel.LOUD
     }
 
+    private fun renderCurrentLocationMarker(): Bitmap {
+        val sizePx = dp(24f)
+        val size = sizePx.toFloat()
+        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        
+        // 파란색 원 그리기
+        val paint = android.graphics.Paint().apply {
+            isAntiAlias = true
+            color = ContextCompat.getColor(this@MainActivity, android.R.color.holo_blue_dark)
+            style = android.graphics.Paint.Style.FILL
+        }
+        
+        val centerX = size / 2f
+        val centerY = size / 2f
+        val density: Float = resources.displayMetrics.density
+        val strokeWidthValue: Float = 3f * density
+        val radius = size / 2f - (2f * density)
+        
+        // 외곽 흰색 테두리
+        val strokePaint = android.graphics.Paint().apply {
+            isAntiAlias = true
+            color = android.graphics.Color.WHITE
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = strokeWidthValue
+        }
+        
+        canvas.drawCircle(centerX, centerY, radius, paint)
+        canvas.drawCircle(centerX, centerY, radius, strokePaint)
+        
+        return bitmap
+    }
+
+    private fun updateCurrentLocationMarker(position: LatLng) {
+        val map = kakaoMap ?: return
+        val labelManager = map.labelManager ?: return
+        val layer = obtainLabelLayer() ?: return
+
+        // 기존 마커 제거
+        currentLocationLabelId?.let { id ->
+            layer.getLabel(id)?.let { layer.remove(it) }
+        }
+
+        // 새 마커 추가
+        val markerBitmap = renderCurrentLocationMarker()
+        val labelStyles = labelManager.addLabelStyles(
+            LabelStyles.from(
+                LabelStyle.from(markerBitmap)
+                    .setAnchorPoint(0.5f, 0.5f)
+            )
+        )
+
+        val labelId = "current_location_${System.currentTimeMillis()}"
+        val labelOptions = LabelOptions.from(labelId, position)
+            .setStyles(labelStyles)
+            .setClickable(false)
+
+        layer.addLabel(labelOptions)
+        currentLocationLabelId = labelId
+    }
+
     private fun calculateDistanceMeters(a: LatLng, b: LatLng): Double {
         val earthRadius = 6_371_000.0
         val dLat = Math.toRadians(b.latitude - a.latitude)
@@ -1080,6 +1142,8 @@ class MainActivity : AppCompatActivity() {
                         CameraUpdateFactory.newCenterPosition(currentLatLng)
                     )
                     lastKnownCenter = currentLatLng
+                    // 현재 위치 마커 추가/업데이트
+                    updateCurrentLocationMarker(currentLatLng)
                     Log.d("MainActivity", "Moved to current location: ${location.latitude}, ${location.longitude}")
                 } else {
                     Toast.makeText(
