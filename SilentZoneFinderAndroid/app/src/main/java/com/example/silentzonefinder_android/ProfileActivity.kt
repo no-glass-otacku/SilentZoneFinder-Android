@@ -11,11 +11,21 @@ import com.example.silentzonefinder_android.databinding.ActivityProfileBinding
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
-
 import io.github.jan.supabase.exceptions.HttpRequestException
 import io.github.jan.supabase.exceptions.RestException
+import io.github.jan.supabase.storage.storage
+import android.app.AlertDialog
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import coil.load
+import io.ktor.http.ContentType
 import kotlinx.coroutines.launch
 import java.util.regex.Pattern
+import android.net.Uri
 
 class ProfileActivity : AppCompatActivity() {
 
@@ -36,17 +46,26 @@ class ProfileActivity : AppCompatActivity() {
         getSharedPreferences("auth_prefs", MODE_PRIVATE)
     }
 
+    private lateinit var pickImageLauncher: ActivityResultLauncher<String>
+
     companion object {
         private val EMAIL_PATTERN = Pattern.compile(
             "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
         )
         private const val MIN_PASSWORD_LENGTH = 6
+        private const val PREF_KEY_EMAIL = "user_email"
+
+        private const val PREF_KEY_PROFILE_IMAGE_URL = "profile_image_url"
     }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // 프로필 이미지용 런처 초기화
+        initImagePickLaunchers()
 
         setupBottomNavigation()
         setupClickListeners()
@@ -54,15 +73,15 @@ class ProfileActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        binding.bottomNavigation.selectedItemId = R.id.navigation_profile
-        overridePendingTransition(0, 0)
-
-        // 저장된 로그인 정보 기준으로 UI 갱신
+        // SharedPreferences에 저장된 로그인 상태 확인
         checkLoginStatus()
+        // SharedPreferences에 저장된 프로필 이미지 URL로 다시 로드
+        loadProfileImageFromSupabase()
     }
 
+
     // -----------------------------
-    // UI 상태 전환
+    // UI 상태 전환 (로그인 / 비로그인)
     // -----------------------------
     private fun showLoginLayout() {
         binding.loginLayout.visibility = View.VISIBLE
@@ -83,7 +102,7 @@ class ProfileActivity : AppCompatActivity() {
 
     private fun checkLoginStatus() {
         val email = prefs.getString("user_email", null)
-        if (email.isNullOrBlank()) {
+        if (email.isNullOrEmpty()) {
             showLoginLayout()
         } else {
             val name = email.substringBefore("@")
@@ -92,7 +111,7 @@ class ProfileActivity : AppCompatActivity() {
     }
 
     // -----------------------------
-    // 클릭 리스너 묶음
+    // 버튼 리스너
     // -----------------------------
     private fun setupClickListeners() = with(binding) {
 
@@ -126,7 +145,7 @@ class ProfileActivity : AppCompatActivity() {
                 } catch (e: RestException) {
                     Toast.makeText(
                         this@ProfileActivity,
-                        "로그인 실패",
+                        "이메일 또는 비밀번호를 확인해주세요.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (e: HttpRequestException) {
@@ -139,7 +158,7 @@ class ProfileActivity : AppCompatActivity() {
                     Log.e("ProfileActivity", "login error", e)
                     Toast.makeText(
                         this@ProfileActivity,
-                        "알 수 없는 오류로 로그인에 실패했습니다.",
+                        "알 수 없는 오류가 발생했습니다.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -170,13 +189,13 @@ class ProfileActivity : AppCompatActivity() {
                     }
                     Toast.makeText(
                         this@ProfileActivity,
-                        "회원가입 완료. 이메일로 전송된 안내를 확인하세요.",
+                        "회원가입이 완료되었습니다. 다시 로그인해주세요.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (e: RestException) {
                     Toast.makeText(
                         this@ProfileActivity,
-                        "회원가입 실패",
+                        "이미 가입된 이메일이거나 요청을 처리할 수 없습니다.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (e: HttpRequestException) {
@@ -189,41 +208,37 @@ class ProfileActivity : AppCompatActivity() {
                     Log.e("ProfileActivity", "signUp error", e)
                     Toast.makeText(
                         this@ProfileActivity,
-                        "알 수 없는 오류로 회원가입에 실패했습니다.",
+                        "알 수 없는 오류가 발생했습니다.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
             }
         }
 
-        // 알림 토글
+        // 알림 스위치 (예시: 단순 토스트)
         switchQuietAlert.setOnCheckedChangeListener { _, isChecked ->
-            val msg = if (isChecked) {
-                "조용한 존 추천 알림이 켜졌습니다."
+            if (isChecked) {
+                Toast.makeText(this@ProfileActivity, "조용한 장소 알림이 켜졌습니다.", Toast.LENGTH_SHORT).show()
             } else {
-                "조용한 존 추천 알림이 꺼졌습니다."
+                Toast.makeText(this@ProfileActivity, "조용한 장소 알림이 꺼졌습니다.", Toast.LENGTH_SHORT).show()
             }
-            Toast.makeText(this@ProfileActivity, msg, Toast.LENGTH_SHORT).show()
         }
 
-        // 알림 히스토리 / 설정은 아직 화면 없으니 안내만
-        rowNotificationHistory.setOnClickListener {
-            val intent = Intent(this@ProfileActivity, NotificationHistoryActivity::class.java)
-            startActivity(intent)
-        }
-
+        // 설정 화면 이동
         rowSettings.setOnClickListener {
             val intent = Intent(this@ProfileActivity, SettingsActivity::class.java)
             startActivity(intent)
         }
 
+        // 프로필 사진 변경 버튼
+        btnChangeAvatar.setOnClickListener {
+            showImageSourceDialog()
+        }
 
-        // Sign Out (텍스트)
+        // 로그아웃
         textSignOut.setOnClickListener {
             performLogout()
         }
-
-
     }
 
     private fun performLogout() {
@@ -244,8 +259,12 @@ class ProfileActivity : AppCompatActivity() {
     // 유효성 검사 + 로그인 정보 저장
     // -----------------------------
     private fun isValidEmail(email: String): Boolean {
+        if (email.isBlank()) {
+            Toast.makeText(this, "이메일을 입력해주세요.", Toast.LENGTH_SHORT).show()
+            return false
+        }
         if (!EMAIL_PATTERN.matcher(email).matches()) {
-            Toast.makeText(this, "올바른 이메일 형식이 아닙니다.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "이메일 형식이 올바르지 않습니다.", Toast.LENGTH_SHORT).show()
             return false
         }
         return true
@@ -255,7 +274,7 @@ class ProfileActivity : AppCompatActivity() {
         if (password.length < MIN_PASSWORD_LENGTH) {
             Toast.makeText(
                 this,
-                "비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.",
+                "비밀번호는 최소 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.",
                 Toast.LENGTH_SHORT
             ).show()
             return false
@@ -272,6 +291,99 @@ class ProfileActivity : AppCompatActivity() {
     }
 
     // -----------------------------
+    // 프로필 이미지 선택 (카메라 / 갤러리)
+    // -----------------------------
+    private fun initImagePickLaunchers() {
+        pickImageLauncher = registerForActivityResult(
+            ActivityResultContracts.GetContent()
+        ) { uri ->
+            if (uri != null) {
+                // 미리보기용: 바로 눈에 보이게
+                binding.imageAvatar.setImageURI(uri)
+
+                // 실제로 앱 재실행 후 사용할 것은 Supabase URL만
+                uploadProfileImageToSupabase(uri)
+            }
+        }
+    }
+
+
+
+    private fun showImageSourceDialog() {
+        val items = arrayOf("갤러리에서 선택")
+
+        AlertDialog.Builder(this)
+            .setTitle("프로필 사진 설정")
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> pickImageLauncher.launch("image/*")
+                }
+            }
+            .show()
+    }
+
+    private fun loadProfileImageFromSupabase() {
+        val url = prefs.getString(PREF_KEY_PROFILE_IMAGE_URL, null) ?: return
+        binding.imageAvatar.load(url)
+    }
+
+
+
+    private fun uploadProfileImageToSupabase(uri: Uri) {
+        val client = supabase ?: return
+
+        lifecycleScope.launch {
+            try {
+                val bytes = uriToBytes(uri)
+                if (bytes.isEmpty()) {
+                    Log.e("ProfileActivity", "uriToBytes 결과가 비어 있습니다.")
+                    return@launch
+                }
+
+                val fileName = "avatar_${System.currentTimeMillis()}.jpg"
+
+                client.storage.from("avatars").upload(
+                    path = fileName,
+                    data = bytes
+                ) {
+                    upsert = true
+                    contentType = ContentType.Image.JPEG   // ← String 말고 이 타입
+                }
+
+                val publicUrl = client.storage.from("avatars").publicUrl(fileName)
+                Log.d("ProfileActivity", "Avatar uploaded. URL = $publicUrl")
+
+                // 이제부터는 Supabase URL만 저장
+                prefs.edit()
+                    .putString(PREF_KEY_PROFILE_IMAGE_URL, publicUrl)
+                    .apply()
+
+                // 업로드 직후에도 같은 URL로 다시 로딩
+                binding.imageAvatar.load(publicUrl)
+
+            } catch (e: Exception) {
+                Log.e("ProfileActivity", "uploadProfileImageToSupabase error", e)
+                Toast.makeText(
+                    this@ProfileActivity,
+                    "프로필 이미지 업로드에 실패했습니다.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+
+
+    private fun uriToBytes(uri: android.net.Uri): ByteArray {
+        val inputStream = contentResolver.openInputStream(uri)
+        return inputStream?.readBytes() ?: ByteArray(0)
+    }
+
+
+
+
+
+    // -----------------------------
     // 하단 네비게이션
     // -----------------------------
     private fun setupBottomNavigation() {
@@ -280,10 +392,7 @@ class ProfileActivity : AppCompatActivity() {
                 R.id.navigation_map -> MainActivity::class.java
                 R.id.navigation_my_reviews -> MyReviewsActivity::class.java
                 R.id.navigation_my_favorite -> MyFavoritesActivity::class.java
-                R.id.navigation_profile -> {
-                    // 현재 화면
-                    return@setOnItemSelectedListener true
-                }
+                R.id.navigation_profile -> ProfileActivity::class.java
                 else -> return@setOnItemSelectedListener false
             }
 
