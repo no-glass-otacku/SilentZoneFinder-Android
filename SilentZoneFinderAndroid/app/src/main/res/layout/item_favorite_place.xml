@@ -138,9 +138,11 @@
                     android:id="@+id/ivNotificationStatus"
                     android:layout_width="22dp"
                     android:layout_height="22dp"
-                    android:src="@drawable/ic_notifications"
-                    android:contentDescription="@string/place_detail_notification"
-                    app:tint="@color/primary_purple" />
+                    android:src="@drawable/ic_bell"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+
             </LinearLayout>
         </LinearLayout>
 

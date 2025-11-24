@@ -20,6 +20,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
+import com.example.silentzonefinder_android.notifications.NotificationPlacesRepository
+import com.example.silentzonefinder_android.data.ReviewDto
 
 class MyFavoritesActivity : AppCompatActivity() {
 
@@ -192,6 +194,8 @@ class MyFavoritesActivity : AppCompatActivity() {
                 favoritesAdapter.updateFavorites(favoritePlaces)
                 favoritesAdapter.updateNotificationPlaces(notificationPlaceIds)
 
+                NotificationPlacesRepository.update(notificationPlaceIds)
+
                 showContentState()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -222,18 +226,38 @@ class MyFavoritesActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) {
+                    val table = SupabaseManager.client.postgrest["place_notifications"]
+
                     if (newState) {
-                        // 알림 ON → upsert
-                        SupabaseManager.client.postgrest["place_notifications"].upsert(
-                            NotificationInsertDto(
-                                userId = userId,
-                                kakaoPlaceId = kakaoPlaceId,
-                                isEnabled = true
+                        val existing = table.select {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kakao_place_id", kakaoPlaceId)
+                            }
+                        }.decodeList<NotificationDto>()
+
+                        if (existing.isEmpty()) {
+                            table.insert(
+                                NotificationInsertDto(
+                                    userId = userId,
+                                    kakaoPlaceId = kakaoPlaceId,
+                                    isEnabled = true
+                                )
                             )
-                        )
+                        } else {
+                            table.update(
+                                {
+                                    set("is_enabled", true)
+                                }
+                            ) {
+                                filter {
+                                    eq("user_id", userId)
+                                    eq("kakao_place_id", kakaoPlaceId)
+                                }
+                            }
+                        }
                     } else {
-                        // 알림 OFF → is_enabled = false 로 업데이트 (또는 delete로 교체 가능)
-                        SupabaseManager.client.postgrest["place_notifications"].update(
+                        table.update(
                             {
                                 set("is_enabled", false)
                             }
@@ -245,6 +269,15 @@ class MyFavoritesActivity : AppCompatActivity() {
                         }
                     }
                 }
+
+                // 로컬 캐시 동기화
+                if (newState) {
+                    notificationPlaceIds.add(kakaoPlaceId)
+                } else {
+                    notificationPlaceIds.remove(kakaoPlaceId)
+                }
+                favoritesAdapter.updateNotificationPlaces(notificationPlaceIds)
+
             } catch (e: Exception) {
                 Toast.makeText(
                     this@MyFavoritesActivity,
@@ -254,6 +287,10 @@ class MyFavoritesActivity : AppCompatActivity() {
             }
         }
     }
+
+
+
+
 
     private fun openPlaceDetail(favorite: FavoritePlace) {
         val intent = Intent(this, PlaceDetailActivity::class.java).apply {
@@ -449,11 +486,5 @@ class MyFavoritesActivity : AppCompatActivity() {
         val address: String? = null
     )
 
-    @Serializable
-    private data class ReviewDto(
-        val id: Int,
-        @SerialName("kakao_place_id") val kakaoPlaceId: String,
-        val rating: Int,
-        @SerialName("noise_level_db") val noiseLevelDb: Double
-    )
+
 }

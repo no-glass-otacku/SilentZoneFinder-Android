@@ -2,10 +2,12 @@ package com.example.silentzonefinder_android
 
 import android.util.Log
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.storage.Storage
+import io.github.jan.supabase.realtime.Realtime
+import kotlin.time.Duration.Companion.seconds
 
 object SupabaseManager {
     private const val TAG = "SupabaseManager"
@@ -51,6 +53,9 @@ object SupabaseManager {
                 install(Auth)
                 install(Postgrest)
                 install(Storage)
+                install(Realtime) {
+                    reconnectDelay = 5.seconds
+                }
             }
             Log.d(TAG, "Supabase 클라이언트 생성 성공!")
             client
