@@ -1,6 +1,10 @@
 package com.example.silentzonefinder_android
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
 import android.util.Log
 import com.kakao.vectormap.KakaoMapSdk
 
@@ -29,6 +33,28 @@ class MapApplication : Application() {
             Log.e("MapApplication", "오류 타입: ${e.javaClass.simpleName}")
             Log.e("MapApplication", "오류 메시지: ${e.message}")
         }
+        createNotificationChannel()
     }
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "조용한 장소 알림"
+            val descriptionText = "즐겨찾기 장소에 조용한 리뷰가 올라왔을 때 알림"
+            val importance = NotificationManager.IMPORTANCE_DEFAULT
+
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+
+            val notificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    companion object {
+        const val CHANNEL_ID = "review_notifications"
+    }
+
+
 }
 

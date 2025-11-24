@@ -53,6 +53,7 @@ import com.kakao.vectormap.mapwidget.component.GuiText
 import com.kakao.vectormap.mapwidget.component.Horizontal
 import com.kakao.vectormap.mapwidget.component.Orientation
 import com.kakao.vectormap.mapwidget.component.Vertical
+import com.example.silentzonefinder_android.notifications.ReviewNotificationWatcher
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.android.Android
@@ -135,6 +136,8 @@ class MainActivity : AppCompatActivity() {
         setupCategoryChips()
         setupFilterDropdown()
         setupMyLocationButton()
+
+        ReviewNotificationWatcher(this, SupabaseManager.client).start()
     }
 
     override fun onResume() {

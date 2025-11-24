@@ -23,6 +23,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import com.example.silentzonefinder_android.data.ReviewDto
+import kotlinx.coroutines.delay
 
 class PlaceDetailActivity : AppCompatActivity() {
 
@@ -71,8 +73,15 @@ class PlaceDetailActivity : AppCompatActivity() {
         setupNewReviewButton()
         setupHeaderControls()
         setupReviewFilters()
+
         loadFavoriteStatus()
-        loadNotificationStatus()
+
+        lifecycleScope.launch {
+            // userId 로딩이 완료될 때까지 잠시 대기
+            delay(150)   // 100~200ms 정도면 충분 (UI 블로킹X)
+            loadNotificationStatus()
+        }
+
         loadReviews(currentPlaceId)
     }
 
@@ -155,6 +164,23 @@ class PlaceDetailActivity : AppCompatActivity() {
         )
         newReviewLauncher.launch(intent)
     }
+
+    private fun ReviewDto.toUiModel(): ReviewUiModel {
+        val displayDate = createdAt
+            ?.takeIf { it.length >= 10 }
+            ?.substring(0, 10)
+            .orEmpty()
+
+        return ReviewUiModel(
+            id = id,
+            rating = rating,
+            text = text ?: "",
+            noiseLevelDb = noiseLevelDb,
+            createdDate = displayDate,
+            amenities = amenities ?: emptyList()
+        )
+    }
+
 
     private fun loadReviews(placeId: String) {
         lifecycleScope.launch {
@@ -325,10 +351,27 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     private fun loadNotificationStatus() {
-        val userId = currentUserId ?: return
-
         lifecycleScope.launch {
+            // 1) 세션에서 사용자 ID 가져오기
+            val userId = withContext(Dispatchers.IO) {
+                // 이미 값 있으면 그거 쓰고, 없으면 Supabase 세션에서 읽기
+                currentUserId ?: SupabaseManager.client.auth.currentSessionOrNull()
+                    ?.user?.id
+                    ?.toString()
+            }
+
+            if (userId == null) {
+                // 로그인 안 되어 있으면 알림은 기본적으로 OFF
+                isNotificationOn = false
+                updateNotificationButtonIcon()
+                return@launch
+            }
+
+            // 전역 변수도 최신 값으로 유지
+            currentUserId = userId
+
             try {
+                // 2) place_notifications 에서 현재 장소 알림 상태 조회
                 val notifications = withContext(Dispatchers.IO) {
                     SupabaseManager.client.postgrest["place_notifications"]
                         .select {
@@ -340,17 +383,19 @@ class PlaceDetailActivity : AppCompatActivity() {
                         .decodeList<NotificationDto>()
                 }
 
+                // 3) 하나라도 is_enabled(또는 isEnabled)가 true이면 ON
                 isNotificationOn = notifications.any { it.isEnabled }
-                updateNotificationButtonIcon()
-
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to load notification status", e)
-                // 실패해도 일단 off 유지
+                Log.e("PlaceDetailActivity", "Failed to load notification status", e)
                 isNotificationOn = false
-                updateNotificationButtonIcon()
             }
+
+            // 4) 버튼 아이콘 갱신
+            updateNotificationButtonIcon()
         }
     }
+
+
 
     private fun toggleNotification() {
         val userId = currentUserId ?: run {
@@ -367,18 +412,42 @@ class PlaceDetailActivity : AppCompatActivity() {
                 val newState = !isNotificationOn
 
                 withContext(Dispatchers.IO) {
+                    val table = SupabaseManager.client.postgrest["place_notifications"]
+
                     if (newState) {
-                        // on: upsert 느낌으로 insert
-                        SupabaseManager.client.postgrest["place_notifications"].upsert(
-                            NotificationInsertDto(
-                                userId = userId,
-                                kakaoPlaceId = currentPlaceId,
-                                isEnabled = true
+                        // 🔔 ON: 먼저 row 존재 여부 확인
+                        val existing = table.select {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kakao_place_id", currentPlaceId)
+                            }
+                        }.decodeList<NotificationDto>()
+
+                        if (existing.isEmpty()) {
+                            // 없으면 새로 INSERT (true)
+                            table.insert(
+                                NotificationInsertDto(
+                                    userId = userId,
+                                    kakaoPlaceId = currentPlaceId,
+                                    isEnabled = true
+                                )
                             )
-                        )
+                        } else {
+                            // 있으면 UPDATE 로 true 로 변경
+                            table.update(
+                                {
+                                    set("is_enabled", true)
+                                }
+                            ) {
+                                filter {
+                                    eq("user_id", userId)
+                                    eq("kakao_place_id", currentPlaceId)
+                                }
+                            }
+                        }
                     } else {
-                        // off: is_enabled = false 로 업데이트해도 되고, 아예 삭제해도 됨
-                        SupabaseManager.client.postgrest["place_notifications"].update(
+                        // 🔕 OFF: is_enabled = false 로만 업데이트
+                        table.update(
                             {
                                 set("is_enabled", false)
                             }
@@ -404,6 +473,11 @@ class PlaceDetailActivity : AppCompatActivity() {
             }
         }
     }
+
+
+
+
+
 
 
 
@@ -590,30 +664,8 @@ class PlaceDetailActivity : AppCompatActivity() {
         @SerialName("avatar_url") val avatarUrl: String? = null
     )
 
-    @Serializable
-    private data class ReviewDto(
-        val id: Int,
-        @SerialName("kakao_place_id") val kakaoPlaceId: String,
-        val rating: Int,
-        val text: String,
-        val images: List<String>? = null,
-        @SerialName("noise_level_db") val noiseLevelDb: Double,
-        @SerialName("created_at") val createdAt: String,
-        @SerialName("user_id") val userId: String? = null,
-        val amenities: List<String>? = null
-    ) {
-        fun toUiModel(): ReviewUiModel {
-            val displayDate = createdAt.takeIf { it.length >= 10 }?.substring(0, 10).orEmpty()
-            return ReviewUiModel(
-                id = id,
-                rating = rating,
-                text = text,
-                noiseLevelDb = noiseLevelDb,
-                createdDate = displayDate,
-                amenities = amenities ?: emptyList()
-            )
-        }
-    }
+
+
 
     companion object {
         private const val TAG = "PlaceDetailActivity"

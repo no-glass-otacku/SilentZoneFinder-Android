@@ -11,6 +11,8 @@ import androidx.core.graphics.drawable.DrawableCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.example.silentzonefinder_android.R
 import com.example.silentzonefinder_android.data.FavoritePlace
+import android.content.res.ColorStateList
+import androidx.core.widget.ImageViewCompat
 
 class MyFavoritesAdapter(
     private var favoriteList: List<FavoritePlace>,
@@ -61,23 +63,28 @@ class MyFavoritesAdapter(
 
         updateStatusBadgeColor(context, holder.statusBadgeTextView, favorite.noiseStatus)
 
-        // 🔔 알림 상태 표시
+        // 🔔 현재 알림 상태 표시
         val isNotificationOn = notificationPlaceIds.contains(favorite.kakaoPlaceId)
         updateNotificationIcon(context, holder.notificationStatusView, isNotificationOn)
 
-        // 🔔 클릭 시 Activity에게 Supabase 업데이트 요청
+        // 🔔 클릭 시 Activity에게 Supabase 업데이트 + UI 토글
+        holder.notificationStatusView.isClickable = true
         holder.notificationStatusView.setOnClickListener {
-            val newState = !isNotificationOn
+            // ① 클릭 시점의 상태 다시 계산
+            val currentlyOn = notificationPlaceIds.contains(favorite.kakaoPlaceId)
+            val newState = !currentlyOn
 
-            // Activity 에게 Supabase 업데이트 요청
+            // ② Activity 쪽에 Supabase 업데이트 요청
             onToggleNotification(favorite.kakaoPlaceId, newState)
 
-            // 즉시 UI 업데이트
+            // ③ 로컬 상태 업데이트
             if (newState) {
                 notificationPlaceIds.add(favorite.kakaoPlaceId)
             } else {
                 notificationPlaceIds.remove(favorite.kakaoPlaceId)
             }
+
+            // ④ 아이콘 색 갱신
             updateNotificationIcon(context, holder.notificationStatusView, newState)
         }
 
@@ -114,15 +121,25 @@ class MyFavoritesAdapter(
     }
 
     private fun updateNotificationIcon(context: Context, iconView: ImageView, isOn: Boolean) {
-        iconView.setImageResource(R.drawable.ic_notifications)
+        // 상태에 따라 아이콘 자체를 바꾼다
+        val iconResId = if (isOn) {
+            R.drawable.ic_notifications      // 알림 ON: 채워진 벨
+        } else {
+            R.drawable.ic_bell               // 알림 OFF: 빈 벨
+        }
+        iconView.setImageResource(iconResId)
 
-        val colorResId =
-            if (isOn) R.color.primary_purple
-            else R.color.grey
-
-        iconView.setColorFilter(
-            ContextCompat.getColor(context, colorResId),
-            android.graphics.PorterDuff.Mode.SRC_IN
+        // 색은 상세 화면과 동일하게: ON=보라, OFF=회색
+        val tintColorResId = if (isOn) {
+            R.color.primary_purple
+        } else {
+            R.color.grey
+        }
+        val tintColor = ContextCompat.getColor(context, tintColorResId)
+        ImageViewCompat.setImageTintList(
+            iconView,
+            ColorStateList.valueOf(tintColor)
         )
     }
+
 }
