@@ -38,6 +38,7 @@ class PlaceDetailActivity : AppCompatActivity() {
     private var currentUserId: String? = null
     private var isFavorite: Boolean = false
     private var isFavoriteLoading: Boolean = false
+    private var isNotificationOn: Boolean = false
 
     private val newReviewLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -71,6 +72,7 @@ class PlaceDetailActivity : AppCompatActivity() {
         setupHeaderControls()
         setupReviewFilters()
         loadFavoriteStatus()
+        loadNotificationStatus()
         loadReviews(currentPlaceId)
     }
 
@@ -78,13 +80,16 @@ class PlaceDetailActivity : AppCompatActivity() {
         backButton.setOnClickListener {
             onBackPressedDispatcher.onBackPressed()
         }
+
         favoriteButton.setOnClickListener {
             toggleFavorite()
         }
+
         notificationButton.setOnClickListener {
-            Toast.makeText(this@PlaceDetailActivity, "알림 기능 준비 중입니다.", Toast.LENGTH_SHORT).show()
+            toggleNotification()
         }
     }
+
 
     private fun setupPlaceInfo(placeName: String, address: String, category: String) {
         binding.placeNameTextView.text = placeName
@@ -127,12 +132,12 @@ class PlaceDetailActivity : AppCompatActivity() {
         binding.fabNewReview.setOnClickListener {
             openNewReviewActivity()
         }
-        
+
         // 리뷰 섹션 헤더의 "리뷰 작성하기" 버튼
         binding.btnWriteReview.setOnClickListener {
             openNewReviewActivity()
         }
-        
+
         // 빈 리뷰 뷰의 "리뷰 작성하기" 버튼
         binding.btnWriteReviewFromEmpty.setOnClickListener {
             openNewReviewActivity()
@@ -257,6 +262,30 @@ class PlaceDetailActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateNotificationButtonIcon() {
+        if (isNotificationOn) {
+            // 알림 ON: 채워진 느낌의 알림 아이콘 사용 (이미 있는 ic_notifications)
+            binding.notificationButton.setImageResource(R.drawable.ic_notifications)
+            binding.notificationButton.imageTintList =
+                android.content.res.ColorStateList.valueOf(
+                    androidx.core.content.ContextCompat.getColor(this, R.color.primary_purple)
+                )
+        } else {
+            // 알림 OFF: 기존 벨 아이콘 + 회색
+            binding.notificationButton.setImageResource(R.drawable.ic_bell)
+            binding.notificationButton.imageTintList =
+                android.content.res.ColorStateList.valueOf(
+                    androidx.core.content.ContextCompat.getColor(this, R.color.grey)
+                )
+        }
+
+        // 접근성 텍스트는 하나만 공통으로 사용
+        binding.notificationButton.contentDescription =
+            getString(R.string.place_detail_notification)
+    }
+
+
+
     private fun loadFavoriteStatus() {
         lifecycleScope.launch {
             isFavoriteLoading = true
@@ -275,7 +304,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                         .select {
                             filter {
                                 eq("user_id", userId)
-                                eq("kaka_place_id", currentPlaceId)
+                                eq("kakao_place_id", currentPlaceId)
                             }
                         }
                         .decodeList<FavoriteDto>()
@@ -294,6 +323,89 @@ class PlaceDetailActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun loadNotificationStatus() {
+        val userId = currentUserId ?: return
+
+        lifecycleScope.launch {
+            try {
+                val notifications = withContext(Dispatchers.IO) {
+                    SupabaseManager.client.postgrest["place_notifications"]
+                        .select {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kakao_place_id", currentPlaceId)
+                            }
+                        }
+                        .decodeList<NotificationDto>()
+                }
+
+                isNotificationOn = notifications.any { it.isEnabled }
+                updateNotificationButtonIcon()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load notification status", e)
+                // 실패해도 일단 off 유지
+                isNotificationOn = false
+                updateNotificationButtonIcon()
+            }
+        }
+    }
+
+    private fun toggleNotification() {
+        val userId = currentUserId ?: run {
+            Toast.makeText(
+                this,
+                getString(R.string.place_detail_login_required),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        lifecycleScope.launch {
+            try {
+                val newState = !isNotificationOn
+
+                withContext(Dispatchers.IO) {
+                    if (newState) {
+                        // on: upsert 느낌으로 insert
+                        SupabaseManager.client.postgrest["place_notifications"].upsert(
+                            NotificationInsertDto(
+                                userId = userId,
+                                kakaoPlaceId = currentPlaceId,
+                                isEnabled = true
+                            )
+                        )
+                    } else {
+                        // off: is_enabled = false 로 업데이트해도 되고, 아예 삭제해도 됨
+                        SupabaseManager.client.postgrest["place_notifications"].update(
+                            {
+                                set("is_enabled", false)
+                            }
+                        ) {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kakao_place_id", currentPlaceId)
+                            }
+                        }
+                    }
+                }
+
+                isNotificationOn = newState
+                updateNotificationButtonIcon()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to toggle notification", e)
+                Toast.makeText(
+                    this@PlaceDetailActivity,
+                    "알림 설정 변경에 실패했어요.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+
 
     private fun toggleFavorite() {
         if (isFavoriteLoading) return
@@ -315,16 +427,25 @@ class PlaceDetailActivity : AppCompatActivity() {
                         SupabaseManager.client.postgrest["favorites"].delete {
                             filter {
                                 eq("user_id", userId)
-                                eq("kaka_place_id", currentPlaceId)
+                                eq("kakao_place_id", currentPlaceId)
                             }
                         }
                     }
                     isFavorite = false
+                    isNotificationOn = false
                     Toast.makeText(
                         this@PlaceDetailActivity,
                         getString(R.string.place_detail_favorite_removed),
                         Toast.LENGTH_SHORT
                     ).show()
+                    withContext(Dispatchers.IO) {
+                        SupabaseManager.client.postgrest["place_notifications"].delete {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kakao_place_id", currentPlaceId)
+                            }
+                        }
+                    }
                 } else {
                     // 즐겨찾기 추가 전에 profiles 테이블에 사용자 레코드가 있는지 확인하고 없으면 생성
                     withContext(Dispatchers.IO) {
@@ -337,7 +458,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                                     }
                                 }
                                 .decodeList<ProfileDto>()
-                            
+
                             // 없으면 생성
                             if (existingProfiles.isEmpty()) {
                                 SupabaseManager.client.postgrest["profiles"].insert(
@@ -353,7 +474,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                             // (이미 존재하는 경우 등)
                             Log.d(TAG, "Profile check/creation failed, continuing with favorite", e)
                         }
-                        
+
                         // 즐겨찾기 추가
                         SupabaseManager.client.postgrest["favorites"].insert(
                             FavoriteInsertDto(
@@ -363,13 +484,25 @@ class PlaceDetailActivity : AppCompatActivity() {
                         )
                     }
                     isFavorite = true
+                    isNotificationOn = true
                     Toast.makeText(
                         this@PlaceDetailActivity,
                         getString(R.string.place_detail_favorite_added),
                         Toast.LENGTH_SHORT
                     ).show()
+                    // 알림 테이블에도 ON 저장
+                    withContext(Dispatchers.IO) {
+                        SupabaseManager.client.postgrest["place_notifications"].upsert(
+                            NotificationInsertDto(
+                                userId = userId,
+                                kakaoPlaceId = currentPlaceId,
+                                isEnabled = true
+                            )
+                        )
+                    }
                 }
                 updateFavoriteButtonIcon()
+                updateNotificationButtonIcon()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to toggle favorite", e)
                 Toast.makeText(
@@ -418,24 +551,38 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     @Serializable
+    data class NotificationDto(
+        @SerialName("user_id") val userId: String,
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("is_enabled") val isEnabled: Boolean
+    )
+
+    @Serializable
+    data class NotificationInsertDto(
+        @SerialName("user_id") val userId: String,
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("is_enabled") val isEnabled: Boolean = true
+    )
+
+    @Serializable
     private data class FavoriteDto(
         @SerialName("user_id") val userId: String,
-        @SerialName("kaka_place_id") val kakaoPlaceId: String
+        @SerialName("kakao_place_id") val kakaoPlaceId: String
     )
 
     @Serializable
     private data class FavoriteInsertDto(
         @SerialName("user_id") val userId: String,
-        @SerialName("kaka_place_id") val kakaoPlaceId: String
+        @SerialName("kakao_place_id") val kakaoPlaceId: String
     )
-    
+
     @Serializable
     private data class ProfileDto(
         val id: String,
         val nickname: String? = null,
         @SerialName("avatar_url") val avatarUrl: String? = null
     )
-    
+
     @Serializable
     private data class ProfileInsertDto(
         val id: String,
