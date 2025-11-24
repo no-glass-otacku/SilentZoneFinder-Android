@@ -14,6 +14,7 @@ import com.example.silentzonefinder_android.adapter.MyReviewsAdapter
 import com.example.silentzonefinder_android.data.Review
 import com.example.silentzonefinder_android.databinding.ActivityMyReviewsBinding
 import com.example.silentzonefinder_android.SupabaseManager
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -80,6 +81,8 @@ class MyReviewsActivity : AppCompatActivity() {
         binding.bottomNavigation.selectedItemId = R.id.navigation_my_reviews
         // 재활용되어 화면에 나타날 때, 애니메이션을 강제로 다시 제거
         overridePendingTransition(0, 0)
+        // 라벨 가시성 명시적으로 설정
+        binding.bottomNavigation.labelVisibilityMode = BottomNavigationView.LABEL_VISIBILITY_LABELED
         loadMyReviews()
     }
 
@@ -435,6 +438,7 @@ private data class ReviewDto(
     @SerialName("user_id") val userId: String,
     val rating: Int,
     val text: String? = null,
+    val images: List<String>? = null,
     @SerialName("noise_level_db") val noiseLevelDb: Double,
     @SerialName("created_at") val createdAt: String
 )

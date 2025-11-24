@@ -2,11 +2,15 @@ package com.example.silentzonefinder_android
 
 import android.app.Application
 import android.util.Log
+import com.example.silentzonefinder_android.utils.NotificationHelper
 import com.kakao.vectormap.KakaoMapSdk
 
 class MapApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+
+        // 알림 채널 생성
+        NotificationHelper.createNotificationChannels(this)
 
         try {
             val appKey = BuildConfig.KAKAO_NATIVE_APP_KEY

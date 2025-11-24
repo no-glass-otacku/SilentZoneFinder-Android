@@ -11,6 +11,7 @@ import com.example.silentzonefinder_android.adapter.MyFavoritesAdapter
 import com.example.silentzonefinder_android.data.FavoritePlace
 import com.example.silentzonefinder_android.databinding.ActivityMyFavoritesBinding
 import com.example.silentzonefinder_android.SupabaseManager
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -48,6 +49,9 @@ class MyFavoritesActivity : AppCompatActivity() {
 
         // 애니메이션 제거
         overridePendingTransition(0, 0)
+
+        // 라벨 가시성 명시적으로 설정
+        binding.bottomNavigation.labelVisibilityMode = BottomNavigationView.LABEL_VISIBILITY_LABELED
 
         // 즐겨찾기 목록 로드
         loadMyFavorites()
@@ -230,7 +234,7 @@ class MyFavoritesActivity : AppCompatActivity() {
                     SupabaseManager.client.postgrest["favorites"].delete {
                         filter {
                             eq("user_id", userId)
-                            eq("kaka_place_id", favorite.kakaoPlaceId)
+                            eq("kakao_place_id", favorite.kakaoPlaceId)
                         }
                     }
                 }
@@ -334,7 +338,9 @@ class MyFavoritesActivity : AppCompatActivity() {
     @Serializable
     private data class FavoriteDto(
         @SerialName("user_id") val userId: String,
-        @SerialName("kaka_place_id") val kakaoPlaceId: String
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("alert_threshold_db") val alertThresholdDb: Double? = null,
+        @SerialName("created_at") val createdAt: String? = null
     )
 
     @Serializable
@@ -346,9 +352,13 @@ class MyFavoritesActivity : AppCompatActivity() {
 
     @Serializable
     private data class ReviewDto(
-        val id: Int,
+        val id: Long,
         @SerialName("kakao_place_id") val kakaoPlaceId: String,
         val rating: Int,
-        @SerialName("noise_level_db") val noiseLevelDb: Double
+        val text: String? = null,
+        val images: List<String>? = null,
+        @SerialName("noise_level_db") val noiseLevelDb: Double,
+        @SerialName("created_at") val createdAt: String? = null,
+        @SerialName("user_id") val userId: String? = null
     )
 }

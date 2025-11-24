@@ -1,13 +1,25 @@
 package com.example.silentzonefinder_android
 
+import android.Manifest
 import android.content.Intent
+import android.content.SharedPreferences
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.example.silentzonefinder_android.databinding.ActivityProfileBinding
+import com.example.silentzonefinder_android.utils.PermissionHelper
+import com.example.silentzonefinder_android.worker.QuietZoneWorker
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
@@ -15,6 +27,7 @@ import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.exceptions.HttpRequestException
 import io.github.jan.supabase.exceptions.RestException
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 
 class ProfileActivity : AppCompatActivity() {
@@ -34,6 +47,24 @@ class ProfileActivity : AppCompatActivity() {
     // 간단한 로그인 상태 저장용 (이메일만 저장)
     private val prefs by lazy {
         getSharedPreferences("auth_prefs", MODE_PRIVATE)
+    }
+
+    // 알림 설정 저장용
+    private val notificationPrefs: SharedPreferences by lazy {
+        getSharedPreferences("notification_prefs", MODE_PRIVATE)
+    }
+
+    // 알림 권한 요청
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            scheduleQuietZoneWorker()
+            Toast.makeText(this, "알림 권한이 허용되었습니다.", Toast.LENGTH_SHORT).show()
+        } else {
+            binding.switchQuietAlert.isChecked = false
+            Toast.makeText(this, "알림 권한이 필요합니다.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     companion object {
@@ -198,13 +229,27 @@ class ProfileActivity : AppCompatActivity() {
 
         // 알림 토글
         switchQuietAlert.setOnCheckedChangeListener { _, isChecked ->
-            val msg = if (isChecked) {
-                "조용한 존 추천 알림이 켜졌습니다."
+            if (isChecked) {
+                // 알림 권한 확인 및 요청
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (!PermissionHelper.hasNotificationPermission(this@ProfileActivity)) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        return@setOnCheckedChangeListener
+                    }
+                }
+                scheduleQuietZoneWorker()
+                notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", true).apply()
+                Toast.makeText(this@ProfileActivity, "조용한 존 추천 알림이 켜졌습니다.", Toast.LENGTH_SHORT).show()
             } else {
-                "조용한 존 추천 알림이 꺼졌습니다."
+                cancelQuietZoneWorker()
+                notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", false).apply()
+                Toast.makeText(this@ProfileActivity, "조용한 존 추천 알림이 꺼졌습니다.", Toast.LENGTH_SHORT).show()
             }
-            Toast.makeText(this@ProfileActivity, msg, Toast.LENGTH_SHORT).show()
         }
+
+        // 저장된 알림 설정 로드
+        val notificationsEnabled = notificationPrefs.getBoolean("quiet_zone_notifications_enabled", false)
+        switchQuietAlert.isChecked = notificationsEnabled
 
         // 알림 히스토리 / 설정은 아직 화면 없으니 안내만
         rowNotificationHistory.setOnClickListener {
@@ -296,5 +341,29 @@ class ProfileActivity : AppCompatActivity() {
             overridePendingTransition(0, 0)
             true
         }
+    }
+
+    private fun scheduleQuietZoneWorker() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val workRequest = PeriodicWorkRequestBuilder<QuietZoneWorker>(
+            15, TimeUnit.MINUTES // 최소 15분 간격
+        )
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "quiet_zone_worker",
+            ExistingPeriodicWorkPolicy.KEEP,
+            workRequest
+        )
+        Log.d("ProfileActivity", "QuietZoneWorker scheduled")
+    }
+
+    private fun cancelQuietZoneWorker() {
+        WorkManager.getInstance(this).cancelUniqueWork("quiet_zone_worker")
+        Log.d("ProfileActivity", "QuietZoneWorker cancelled")
     }
 }

@@ -3,6 +3,6 @@
     <!-- 아이템이 선택된(checked) 상태일 때 적용될 색상 -->
     <item android:state_checked="true" android:color="@color/blue" />
 
-    <!-- 아이템이 선택되지 않은 기본 상태일 때 적용될 색상 -->
-    <item android:state_checked="false" android:color="@color/grey" />
+    <!-- 아이템이 선택되지 않은 기본 상태일 때 적용될 색상 (더 진한 색상으로 변경) -->
+    <item android:state_checked="false" android:color="#212121" />
 </selector>

@@ -112,4 +112,9 @@
     <string name="noise_level_good_range">Good (46-60 dB)</string>
     <string name="noise_level_normal_range">Normal (61-70 dB)</string>
     <string name="noise_level_loud_range">Loud (70+ dB)</string>
+    <string name="noise_threshold_title">Set Noise Alert Threshold</string>
+    <string name="noise_threshold_description">You\'ll receive a notification when the noise level exceeds your %1$d dB threshold.</string>
+    <string name="noise_threshold_save">Save Alert</string>
+    <string name="noise_threshold_info_title">About Noise Threshold Alerts</string>
+    <string name="noise_threshold_info_text">When you set a noise threshold, you\'ll receive notifications when the noise level at your favorited places exceeds this value. This helps you stay aware of noisy environments.</string>
 </resources>

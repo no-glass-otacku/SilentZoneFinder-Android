@@ -45,22 +45,17 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- 내용 영역 스크롤 -->
-    <androidx.core.widget.NestedScrollView
-        android:id="@+id/history_scroll"
+    <!-- 내용 영역 RecyclerView -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/history_list_container"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:padding="12dp"
+        android:clipToPadding="false"
         app:layout_constraintTop_toBottomOf="@id/history_top_bar"
         app:layout_constraintBottom_toTopOf="@id/bottom_navigation"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
-
-        <LinearLayout
-            android:id="@+id/history_list_container"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
 
             <!-- ===== 카드 1 : Noise Threshold Alert ===== -->
             <com.google.android.material.card.MaterialCardView
@@ -275,10 +270,7 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 아래로 필요하면 카드 더 복붙해서 문구/시간만 바꾸면 됨 -->
-
-        </LinearLayout>
-    </androidx.core.widget.NestedScrollView>
+    </androidx.recyclerview.widget.RecyclerView>
 
     <!-- 하단 네비게이션 : 기존이랑 동일하게 -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
