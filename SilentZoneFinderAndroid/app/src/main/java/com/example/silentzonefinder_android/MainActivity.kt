@@ -906,15 +906,14 @@ class MainActivity : AppCompatActivity() {
 
     @Serializable
     private data class ReviewDto(
-        val id: Int,
+        val id: Long,
         @SerialName("kakao_place_id") val kakaoPlaceId: String,
         val rating: Int,
-        val text: String,
+        val text: String? = null,
         val images: List<String>? = null,
         @SerialName("noise_level_db") val noiseLevelDb: Double,
         @SerialName("created_at") val createdAt: String,
-        @SerialName("user_id") val userId: String? = null,
-        val amenities: List<String>? = null
+        @SerialName("user_id") val userId: String? = null
     )
 
     private fun dp(value: Float): Int =

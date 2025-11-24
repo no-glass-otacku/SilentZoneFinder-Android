@@ -82,7 +82,8 @@ class PlaceDetailActivity : AppCompatActivity() {
             toggleFavorite()
         }
         notificationButton.setOnClickListener {
-            Toast.makeText(this@PlaceDetailActivity, "알림 기능 준비 중입니다.", Toast.LENGTH_SHORT).show()
+            val intent = Intent(this@PlaceDetailActivity, NoiseThresholdActivity::class.java)
+            startActivity(intent)
         }
     }
 
@@ -275,7 +276,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                         .select {
                             filter {
                                 eq("user_id", userId)
-                                eq("kaka_place_id", currentPlaceId)
+                                eq("kakao_place_id", currentPlaceId)
                             }
                         }
                         .decodeList<FavoriteDto>()
@@ -315,7 +316,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                         SupabaseManager.client.postgrest["favorites"].delete {
                             filter {
                                 eq("user_id", userId)
-                                eq("kaka_place_id", currentPlaceId)
+                                eq("kakao_place_id", currentPlaceId)
                             }
                         }
                     }
@@ -420,13 +421,16 @@ class PlaceDetailActivity : AppCompatActivity() {
     @Serializable
     private data class FavoriteDto(
         @SerialName("user_id") val userId: String,
-        @SerialName("kaka_place_id") val kakaoPlaceId: String
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("alert_threshold_db") val alertThresholdDb: Double? = null,
+        @SerialName("created_at") val createdAt: String? = null
     )
 
     @Serializable
     private data class FavoriteInsertDto(
         @SerialName("user_id") val userId: String,
-        @SerialName("kaka_place_id") val kakaoPlaceId: String
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("alert_threshold_db") val alertThresholdDb: Double? = null
     )
     
     @Serializable
@@ -445,25 +449,24 @@ class PlaceDetailActivity : AppCompatActivity() {
 
     @Serializable
     private data class ReviewDto(
-        val id: Int,
+        val id: Long,
         @SerialName("kakao_place_id") val kakaoPlaceId: String,
         val rating: Int,
-        val text: String,
+        val text: String? = null,
         val images: List<String>? = null,
         @SerialName("noise_level_db") val noiseLevelDb: Double,
         @SerialName("created_at") val createdAt: String,
-        @SerialName("user_id") val userId: String? = null,
-        val amenities: List<String>? = null
+        @SerialName("user_id") val userId: String? = null
     ) {
         fun toUiModel(): ReviewUiModel {
             val displayDate = createdAt.takeIf { it.length >= 10 }?.substring(0, 10).orEmpty()
             return ReviewUiModel(
-                id = id,
+                id = id.toInt(),
                 rating = rating,
-                text = text,
+                text = text ?: "",
                 noiseLevelDb = noiseLevelDb,
                 createdDate = displayDate,
-                amenities = amenities ?: emptyList()
+                amenities = emptyList() // DB에 amenities 필드가 없으므로 빈 리스트
             )
         }
     }
