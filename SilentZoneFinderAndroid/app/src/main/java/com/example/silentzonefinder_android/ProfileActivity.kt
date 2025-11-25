@@ -1,31 +1,35 @@
 package com.example.silentzonefinder_android
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import coil.load
 import com.example.silentzonefinder_android.databinding.ActivityProfileBinding
 import com.example.silentzonefinder_android.utils.PermissionHelper
 import com.example.silentzonefinder_android.worker.QuietZoneWorker
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
-
 import io.github.jan.supabase.exceptions.HttpRequestException
 import io.github.jan.supabase.exceptions.RestException
+import io.github.jan.supabase.storage.storage
+import io.ktor.http.ContentType
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
@@ -34,7 +38,6 @@ class ProfileActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityProfileBinding
 
-    // Supabase 클라이언트 (에러 나면 null 로 처리)
     private val supabase: SupabaseClient? by lazy {
         try {
             SupabaseManager.client
@@ -44,17 +47,16 @@ class ProfileActivity : AppCompatActivity() {
         }
     }
 
-    // 간단한 로그인 상태 저장용 (이메일만 저장)
     private val prefs by lazy {
         getSharedPreferences("auth_prefs", MODE_PRIVATE)
     }
 
-    // 알림 설정 저장용
     private val notificationPrefs: SharedPreferences by lazy {
         getSharedPreferences("notification_prefs", MODE_PRIVATE)
     }
 
-    // 알림 권한 요청
+    private lateinit var pickImageLauncher: ActivityResultLauncher<String>
+
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -72,6 +74,8 @@ class ProfileActivity : AppCompatActivity() {
             "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
         )
         private const val MIN_PASSWORD_LENGTH = 6
+        private const val PREF_KEY_EMAIL = "user_email"
+        private const val PREF_KEY_PROFILE_IMAGE_URL = "profile_image_url"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,6 +83,7 @@ class ProfileActivity : AppCompatActivity() {
         binding = ActivityProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        initImagePickLaunchers()
         setupBottomNavigation()
         setupClickListeners()
     }
@@ -87,14 +92,10 @@ class ProfileActivity : AppCompatActivity() {
         super.onResume()
         binding.bottomNavigation.selectedItemId = R.id.navigation_profile
         overridePendingTransition(0, 0)
-
-        // 저장된 로그인 정보 기준으로 UI 갱신
         checkLoginStatus()
+        loadProfileImageFromSupabase()
     }
 
-    // -----------------------------
-    // UI 상태 전환
-    // -----------------------------
     private fun showLoginLayout() {
         binding.loginLayout.visibility = View.VISIBLE
         binding.loggedInLayout.visibility = View.GONE
@@ -103,18 +104,15 @@ class ProfileActivity : AppCompatActivity() {
     private fun showLoggedInLayout(name: String, email: String) {
         binding.loginLayout.visibility = View.GONE
         binding.loggedInLayout.visibility = View.VISIBLE
-
         binding.textUserName.text = name
         binding.textUserEmail.text = email
-
-        // 현재는 더미 숫자. 추후 실제 데이터로 바꾸면 됨
         binding.textReviewCount.text = "12"
         binding.textOptimalCount.text = "8"
     }
 
     private fun checkLoginStatus() {
-        val email = prefs.getString("user_email", null)
-        if (email.isNullOrBlank()) {
+        val email = prefs.getString(PREF_KEY_EMAIL, null)
+        if (email.isNullOrEmpty()) {
             showLoginLayout()
         } else {
             val name = email.substringBefore("@")
@@ -122,12 +120,7 @@ class ProfileActivity : AppCompatActivity() {
         }
     }
 
-    // -----------------------------
-    // 클릭 리스너 묶음
-    // -----------------------------
     private fun setupClickListeners() = with(binding) {
-
-        // 로그인 버튼
         btnLogin.setOnClickListener {
             val email = inputEmail.text.toString().trim()
             val password = inputPassword.text.toString()
@@ -149,7 +142,6 @@ class ProfileActivity : AppCompatActivity() {
                         this.email = email
                         this.password = password
                     }
-                    // 로그인 성공
                     saveLoggedInUser(email)
                     val name = email.substringBefore("@")
                     showLoggedInLayout(name, email)
@@ -157,7 +149,7 @@ class ProfileActivity : AppCompatActivity() {
                 } catch (e: RestException) {
                     Toast.makeText(
                         this@ProfileActivity,
-                        "로그인 실패",
+                        "이메일 또는 비밀번호를 확인해주세요.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (e: HttpRequestException) {
@@ -170,14 +162,13 @@ class ProfileActivity : AppCompatActivity() {
                     Log.e("ProfileActivity", "login error", e)
                     Toast.makeText(
                         this@ProfileActivity,
-                        "알 수 없는 오류로 로그인에 실패했습니다.",
+                        "알 수 없는 오류가 발생했습니다.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
             }
         }
 
-        // 회원가입 버튼
         btnSignUp.setOnClickListener {
             val email = inputEmail.text.toString().trim()
             val password = inputPassword.text.toString()
@@ -201,13 +192,13 @@ class ProfileActivity : AppCompatActivity() {
                     }
                     Toast.makeText(
                         this@ProfileActivity,
-                        "회원가입 완료. 이메일로 전송된 안내를 확인하세요.",
+                        "회원가입이 완료되었습니다. 다시 로그인해주세요.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (e: RestException) {
                     Toast.makeText(
                         this@ProfileActivity,
-                        "회원가입 실패",
+                        "이미 가입된 이메일이거나 요청을 처리할 수 없습니다.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (e: HttpRequestException) {
@@ -220,22 +211,20 @@ class ProfileActivity : AppCompatActivity() {
                     Log.e("ProfileActivity", "signUp error", e)
                     Toast.makeText(
                         this@ProfileActivity,
-                        "알 수 없는 오류로 회원가입에 실패했습니다.",
+                        "알 수 없는 오류가 발생했습니다.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
             }
         }
 
-        // 알림 토글
         switchQuietAlert.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
-                // 알림 권한 확인 및 요청
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    if (!PermissionHelper.hasNotificationPermission(this@ProfileActivity)) {
-                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        return@setOnCheckedChangeListener
-                    }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    !PermissionHelper.hasNotificationPermission(this@ProfileActivity)
+                ) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    return@setOnCheckedChangeListener
                 }
                 scheduleQuietZoneWorker()
                 notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", true).apply()
@@ -247,11 +236,10 @@ class ProfileActivity : AppCompatActivity() {
             }
         }
 
-        // 저장된 알림 설정 로드
-        val notificationsEnabled = notificationPrefs.getBoolean("quiet_zone_notifications_enabled", false)
+        val notificationsEnabled =
+            notificationPrefs.getBoolean("quiet_zone_notifications_enabled", false)
         switchQuietAlert.isChecked = notificationsEnabled
 
-        // 알림 히스토리 / 설정은 아직 화면 없으니 안내만
         rowNotificationHistory.setOnClickListener {
             val intent = Intent(this@ProfileActivity, NotificationHistoryActivity::class.java)
             startActivity(intent)
@@ -262,13 +250,13 @@ class ProfileActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
+        btnChangeAvatar.setOnClickListener {
+            showImageSourceDialog()
+        }
 
-        // Sign Out (텍스트)
         textSignOut.setOnClickListener {
             performLogout()
         }
-
-
     }
 
     private fun performLogout() {
@@ -285,12 +273,13 @@ class ProfileActivity : AppCompatActivity() {
         }
     }
 
-    // -----------------------------
-    // 유효성 검사 + 로그인 정보 저장
-    // -----------------------------
     private fun isValidEmail(email: String): Boolean {
+        if (email.isBlank()) {
+            Toast.makeText(this, "이메일을 입력해주세요.", Toast.LENGTH_SHORT).show()
+            return false
+        }
         if (!EMAIL_PATTERN.matcher(email).matches()) {
-            Toast.makeText(this, "올바른 이메일 형식이 아닙니다.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "이메일 형식이 올바르지 않습니다.", Toast.LENGTH_SHORT).show()
             return false
         }
         return true
@@ -300,7 +289,7 @@ class ProfileActivity : AppCompatActivity() {
         if (password.length < MIN_PASSWORD_LENGTH) {
             Toast.makeText(
                 this,
-                "비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.",
+                "비밀번호는 최소 ${'$'}MIN_PASSWORD_LENGTH자 이상이어야 합니다.",
                 Toast.LENGTH_SHORT
             ).show()
             return false
@@ -309,26 +298,94 @@ class ProfileActivity : AppCompatActivity() {
     }
 
     private fun saveLoggedInUser(email: String) {
-        prefs.edit().putString("user_email", email).apply()
+        prefs.edit().putString(PREF_KEY_EMAIL, email).apply()
     }
 
     private fun clearLoggedInUser() {
         prefs.edit().clear().apply()
     }
 
-    // -----------------------------
-    // 하단 네비게이션
-    // -----------------------------
+    private fun initImagePickLaunchers() {
+        pickImageLauncher = registerForActivityResult(
+            ActivityResultContracts.GetContent()
+        ) { uri ->
+            if (uri != null) {
+                binding.imageAvatar.setImageURI(uri)
+                uploadProfileImageToSupabase(uri)
+            }
+        }
+    }
+
+    private fun showImageSourceDialog() {
+        val items = arrayOf("갤러리에서 선택")
+
+        AlertDialog.Builder(this)
+            .setTitle("프로필 사진 설정")
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> pickImageLauncher.launch("image/*")
+                }
+            }
+            .show()
+    }
+
+    private fun loadProfileImageFromSupabase() {
+        val url = prefs.getString(PREF_KEY_PROFILE_IMAGE_URL, null) ?: return
+        binding.imageAvatar.load(url)
+    }
+
+    private fun uploadProfileImageToSupabase(uri: Uri) {
+        val client = supabase ?: return
+
+        lifecycleScope.launch {
+            try {
+                val bytes = uriToBytes(uri)
+                if (bytes.isEmpty()) {
+                    Log.e("ProfileActivity", "uriToBytes 결과가 비어 있습니다.")
+                    return@launch
+                }
+
+                val fileName = "avatar_${'$'}{System.currentTimeMillis()}.jpg"
+
+                client.storage.from("avatars").upload(
+                    path = fileName,
+                    data = bytes
+                ) {
+                    upsert = true
+                    contentType = ContentType.Image.JPEG
+                }
+
+                val publicUrl = client.storage.from("avatars").publicUrl(fileName)
+                Log.d("ProfileActivity", "Avatar uploaded. URL = ${'$'}publicUrl")
+
+                prefs.edit()
+                    .putString(PREF_KEY_PROFILE_IMAGE_URL, publicUrl)
+                    .apply()
+
+                binding.imageAvatar.load(publicUrl)
+            } catch (e: Exception) {
+                Log.e("ProfileActivity", "uploadProfileImageToSupabase error", e)
+                Toast.makeText(
+                    this@ProfileActivity,
+                    "프로필 이미지 업로드에 실패했습니다.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun uriToBytes(uri: Uri): ByteArray {
+        val inputStream = contentResolver.openInputStream(uri)
+        return inputStream?.readBytes() ?: ByteArray(0)
+    }
+
     private fun setupBottomNavigation() {
         binding.bottomNavigation.setOnItemSelectedListener { item ->
             val targetActivity = when (item.itemId) {
                 R.id.navigation_map -> MainActivity::class.java
                 R.id.navigation_my_reviews -> MyReviewsActivity::class.java
                 R.id.navigation_my_favorite -> MyFavoritesActivity::class.java
-                R.id.navigation_profile -> {
-                    // 현재 화면
-                    return@setOnItemSelectedListener true
-                }
+                R.id.navigation_profile -> ProfileActivity::class.java
                 else -> return@setOnItemSelectedListener false
             }
 
@@ -349,7 +406,7 @@ class ProfileActivity : AppCompatActivity() {
             .build()
 
         val workRequest = PeriodicWorkRequestBuilder<QuietZoneWorker>(
-            15, TimeUnit.MINUTES // 최소 15분 간격
+            15, TimeUnit.MINUTES
         )
             .setConstraints(constraints)
             .build()
@@ -359,11 +416,9 @@ class ProfileActivity : AppCompatActivity() {
             ExistingPeriodicWorkPolicy.KEEP,
             workRequest
         )
-        Log.d("ProfileActivity", "QuietZoneWorker scheduled")
     }
 
     private fun cancelQuietZoneWorker() {
         WorkManager.getInstance(this).cancelUniqueWork("quiet_zone_worker")
-        Log.d("ProfileActivity", "QuietZoneWorker cancelled")
     }
 }
