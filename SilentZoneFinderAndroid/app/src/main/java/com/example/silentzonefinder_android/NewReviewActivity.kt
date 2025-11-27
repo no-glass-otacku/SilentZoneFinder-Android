@@ -335,23 +335,16 @@ class NewReviewActivity : AppCompatActivity() {
                 }
 
                 // 이미지 업로드 및 URL 수집
-                val imagesJson: String? = withContext(Dispatchers.IO) {
+                val imageUrls: List<String>? = withContext(Dispatchers.IO) {
                     val urls = mutableListOf<String>()
-
-                    // 선택된 이미지 리스트(uploadedImages)를 하나씩 업로드
                     for (image in uploadedImages) {
                         val url = uploadImageToSupabase(image)
                         if (url != null) {
                             urls.add(url)
                         }
                     }
-
-                    // URL 리스트를 JSON 문자열로 변환 (예: ["url1", "url2"])
-                    if (urls.isNotEmpty()) {
-                        urls.joinToString(prefix = "[\"", separator = "\",\"", postfix = "\"]")
-                    } else {
-                        null // 이미지가 없으면 null
-                    }
+                    // 이미지가 있으면 리스트 반환, 없으면 null
+                    if (urls.isNotEmpty()) urls else null
                 }
 
                 // 3. reviews 테이블에 리뷰 저장
@@ -360,7 +353,7 @@ class NewReviewActivity : AppCompatActivity() {
                     userId = userId,
                     rating = rating,
                     text = text,
-                    images = imagesJson, // 업로드된 URL 목록
+                    images = imageUrls, // 업로드된 URL 목록
                     noiseLevelDb = noiseLevelDb
                 )
 
@@ -476,7 +469,7 @@ class NewReviewActivity : AppCompatActivity() {
         @SerialName("user_id") val userId: String,
         val rating: Int,
         val text: String,
-        val images: String? = null,
+        val images: List<String>? = null,
         @SerialName("noise_level_db") val noiseLevelDb: Double
     )
     private fun getSelectedAmenities(): String {
