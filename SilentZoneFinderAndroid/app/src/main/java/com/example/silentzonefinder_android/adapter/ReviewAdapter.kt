@@ -14,6 +14,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.silentzonefinder_android.R
 import com.example.silentzonefinder_android.databinding.ItemReviewBinding
 import kotlin.math.roundToInt
+import coil.load
+import coil.transform.RoundedCornersTransformation
 
 data class ReviewUiModel(
     val id: Int,
@@ -21,7 +23,8 @@ data class ReviewUiModel(
     val text: String,
     val noiseLevelDb: Double,
     val createdDate: String,
-    val amenities: List<String> = emptyList()
+    val amenities: List<String> = emptyList(),
+    val images: List<String> = emptyList()
 )
 
 class ReviewAdapter :
@@ -55,6 +58,8 @@ class ReviewAdapter :
             
             binding.reviewTextView.text = item.text
             binding.dateTextView.text = item.createdDate
+
+            setupImages(binding.imageContainer, binding.imageScrollView, item.images)
             
             setupAmenities(binding.amenitiesLayout, item.amenities)
         }
@@ -75,7 +80,38 @@ class ReviewAdapter :
                 layout.addView(imageView)
             }
         }
+        private fun setupImages(container: LinearLayout, scrollView: View, images: List<String>) {
+            container.removeAllViews() // 기존 뷰 초기화
 
+            if (images.isEmpty()) {
+                scrollView.visibility = View.GONE
+                return
+            }
+
+            scrollView.visibility = View.VISIBLE
+            val context = container.context
+            val imageSize = 100.dpToPx(context) // 이미지 크기 (100dp)
+
+            images.forEach { imageUrl ->
+                val imageView = ImageView(context).apply {
+                    // 레이아웃 파라미터 설정 (크기 및 마진)
+                    layoutParams = LinearLayout.LayoutParams(imageSize, imageSize).apply {
+                        marginEnd = 8.dpToPx(context) // 이미지 사이 간격
+                    }
+                    scaleType = ImageView.ScaleType.CENTER_CROP // 꽉 차게 자르기
+
+                    // Coil을 사용하여 이미지 로드
+                    load(imageUrl) {
+                        crossfade(true)
+                        // 둥근 모서리 적용 (선택 사항)
+                        transformations(RoundedCornersTransformation(16f))
+                        // 로딩 중/에러 시 보여줄 이미지 (있다면 추가)
+                        // placeholder(R.color.grey_light)
+                    }
+                }
+                container.addView(imageView)
+            }
+        }
         private fun setupAmenities(layout: LinearLayout, amenities: List<String>) {
             layout.removeAllViews()
             if (amenities.isEmpty()) {
