@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.example.silentzonefinder_android.adapter.ReviewImageAdapter
+import com.example.silentzonefinder_android.data.ReviewDto
 import com.example.silentzonefinder_android.data.ReviewImage
 import com.example.silentzonefinder_android.databinding.ActivityNewReviewBinding
 import io.github.jan.supabase.postgrest.postgrest
@@ -209,6 +210,23 @@ class NewReviewActivity : AppCompatActivity() {
                 finalMeasuredDb = reviewDto.noiseLevelDb.toInt()
                 binding.ratingBar.rating = reviewDto.rating.toFloat()
                 binding.etReview.setText(reviewDto.text ?: "")
+
+                // 기존 이미지 데이터 불러와서 리스트에 넣기
+                if (!reviewDto.images.isNullOrEmpty()) {
+                    uploadedImages.clear() // 혹시 모를 중복 방지
+
+                    reviewDto.images.forEach { imageUrl ->
+                        // 이미 서버에 있는 이미지이므로 isUploaded = true로 설정
+                        val image = ReviewImage(
+                            uri = android.net.Uri.parse(imageUrl),
+                            isUploaded = true,
+                            uploadedUrl = imageUrl
+                        )
+                        uploadedImages.add(image)
+                    }
+                    // 어댑터에게 "데이터가 통째로 바뀌었어!"라고 알림
+                    imageAdapter.notifyDataSetChanged()
+                }
                 
                 // 소음 측정 뷰 숨기고 리뷰 작성 뷰로 바로 이동
                 binding.noiseMeasurementView.visibility = View.GONE
@@ -236,15 +254,6 @@ class NewReviewActivity : AppCompatActivity() {
             }
         }
     }
-    
-    @Serializable
-    private data class ReviewDto(
-        val id: Long,
-        @SerialName("kakao_place_id") val kakaoPlaceId: String,
-        val rating: Int,
-        val text: String?,
-        @SerialName("noise_level_db") val noiseLevelDb: Double
-    )
     private fun setupSubmitButton() {
         binding.btnSubmitReview.setOnClickListener {
             // 1. 별점 값 읽기
@@ -421,14 +430,34 @@ class NewReviewActivity : AppCompatActivity() {
 
                 val userId = user.id.toString()
 
+                val finalImageUrls: List<String> = withContext(Dispatchers.IO) {
+                    val urls = mutableListOf<String>()
+
+                    for (image in uploadedImages) {
+                        if (image.isUploaded && image.uploadedUrl != null) {
+                            // A. 이미 업로드된(기존) 이미지는 URL을 그대로 사용
+                            urls.add(image.uploadedUrl!!)
+                        } else {
+                            // B. 새로 추가된 이미지는 업로드 후 URL 받기
+                            val newUrl = uploadImageToSupabase(image)
+                            if (newUrl != null) {
+                                urls.add(newUrl)
+                            }
+                        }
+                    }
+                    urls // 최종 URL 리스트 반환
+                }
                 // 리뷰 업데이트 (소음은 수정 불가이므로 기존 값 유지)
+                // [수정됨] mapOf 대신 ReviewUpdateDto 사용!
+                val updateData = ReviewUpdateDto(
+                    rating = rating,
+                    text = text,
+                    images = finalImageUrls
+                )
+
                 withContext(Dispatchers.IO) {
                     SupabaseManager.client.postgrest["reviews"].update(
-                        mapOf(
-                            "rating" to rating,
-                            "text" to text
-                            // noise_level_db는 수정하지 않음
-                        )
+                        updateData // 👈 여기에 DTO를 넣습니다.
                     ) {
                         filter {
                             eq("id", reviewId)
@@ -811,3 +840,10 @@ class NewReviewActivity : AppCompatActivity() {
         }
     }
 }
+// 업데이트할 데이터만 담는 전용 그릇
+@Serializable
+private data class ReviewUpdateDto(
+    val rating: Int,
+    val text: String,
+    val images: List<String>? // 이미지는 리스트로 보냅니다.
+)
