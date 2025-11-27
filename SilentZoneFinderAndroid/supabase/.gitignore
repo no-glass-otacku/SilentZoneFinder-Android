@@ -1,0 +1,18 @@
+# Supabase
+.branches
+.temp
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local
+
+# Firebase service account keys
+*.json
+!app/**/*.json   # 앱 내의 정상 JSON 파일은 허용 (예: assets)
+
+# Supabase secrets
+supabase/.env
+
+# Deno / Edge runtime files (optional)
+supabase/functions/**/*.log

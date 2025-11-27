@@ -63,6 +63,15 @@
             android:exported="false"
             android:label="로그인"
             android:theme="@style/Theme.SilentZoneFinderAndroid" />
+
+        <service
+            android:name=".MyFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+            </intent-filter>
+        </service>
+
     </application>
 
     <uses-permission android:name="android.permission.INTERNET" />
