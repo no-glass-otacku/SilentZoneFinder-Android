@@ -1,6 +1,8 @@
 package com.example.silentzonefinder_android.adapter
 
 import android.content.Context
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -44,16 +46,11 @@ class MyReviewsAdapter(
             R.string.my_review_noise_format,
             review.decibel
         )
-        // dB 값과 날짜 텍스트 색상 및 폰트를 강제로 설정
-        val blackColor = android.graphics.Color.parseColor("#FF000000")
-        holder.decibelTextView.setTextColor(blackColor)
-        holder.decibelTextView.typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
-        holder.decibelTextView.alpha = 1.0f
-        
-        holder.dateTextView.setTextColor(blackColor)
-        holder.dateTextView.typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+        styleDecibelChip(context, holder.decibelTextView, review.status)
+        holder.dateTextView.setTextColor(ContextCompat.getColor(context, R.color.filter_button_text))
+        holder.dateTextView.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         holder.dateTextView.alpha = 1.0f
-        
+
         holder.statusBadgeTextView.text = review.status
         holder.ratingTextView.text = getStars(review.rating)
         holder.dateTextView.text = review.date
@@ -129,6 +126,21 @@ class MyReviewsAdapter(
 
     private fun dpToPx(context: Context, dp: Int): Int {
         return (dp * context.resources.displayMetrics.density).toInt()
+    }
+
+    private fun styleDecibelChip(context: Context, textView: TextView, status: String) {
+        val colorResId = when (status) {
+            "Library Quiet" -> R.color.library_quiet_color
+            "Quiet Conversation" -> R.color.quiet_conversation_color
+            "Lively Chatter" -> R.color.lively_chatter_color
+            "High Traffic" -> R.color.high_traffic_color
+            else -> R.color.filter_indicator_all
+        }
+        val color = ContextCompat.getColor(context, colorResId)
+        val background = (textView.background as? GradientDrawable)?.mutate() as? GradientDrawable
+        background?.setStroke(dpToPx(context, 2), color)
+        background?.let { textView.background = it }
+        textView.setTextColor(color)
     }
 }
 

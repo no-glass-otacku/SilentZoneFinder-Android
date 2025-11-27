@@ -159,6 +159,9 @@ class NewReviewActivity : AppCompatActivity() {
             setDisplayHomeAsUpEnabled(true)
         }
         
+        // 로그인 상태 확인 (Activity 시작 시)
+        checkLoginStatusBeforeStart()
+        
         if (isEditMode) {
             // 수정 모드: 기존 리뷰 데이터 로드
             loadExistingReview()
@@ -167,6 +170,8 @@ class NewReviewActivity : AppCompatActivity() {
         } else {
             // 새 리뷰 모드: 소음 측정 시작
             checkAudioPermission()
+            // 개발 모드 설정
+            setupDevMode()
         }
         setupImageRecyclerView()
         setupImageUpload() //image button listener
@@ -301,48 +306,121 @@ class NewReviewActivity : AppCompatActivity() {
                 // 1. 현재 로그인한 사용자 ID 가져오기
                 val currentSession = withContext(Dispatchers.IO) {
                     try {
-                        SupabaseManager.client.auth.currentSessionOrNull()
+                        // 먼저 현재 세션 확인
+                        var session = SupabaseManager.client.auth.currentSessionOrNull()
+                        Log.d(TAG, "Initial session check: ${if (session != null) "Found" else "Not found"}")
+                        
+                        // 세션이 없으면 새로고침 시도
+                        if (session == null) {
+                            Log.d(TAG, "Attempting to refresh session...")
+                            try {
+                                SupabaseManager.client.auth.refreshCurrentSession()
+                                session = SupabaseManager.client.auth.currentSessionOrNull()
+                                Log.d(TAG, "After refresh: ${if (session != null) "Found" else "Still not found"}")
+                            } catch (refreshError: Exception) {
+                                Log.e(TAG, "Failed to refresh session", refreshError)
+                            }
+                        }
+                        
+                        if (session != null) {
+                            val sessionUser = session.user
+                            Log.d(TAG, "Session found - User ID: ${sessionUser?.id}")
+                            Log.d(TAG, "Session expires at: ${session.expiresAt}")
+                        } else {
+                            Log.w(TAG, "No session available after all attempts")
+                        }
+                        session
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to get current session", e)
+                        Log.e(TAG, "Exception type: ${e.javaClass.simpleName}")
+                        Log.e(TAG, "Exception message: ${e.message}")
+                        e.printStackTrace()
                         null
                     }
                 }
 
                 if (currentSession == null) {
-                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
+                    Log.w(TAG, "No session found - user needs to login")
+                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다. 프로필에서 로그인해주세요.", Toast.LENGTH_LONG).show()
                     return@launch
                 }
 
                 val user = currentSession.user
                 if (user == null) {
-                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
+                    Log.w(TAG, "Session exists but user is null")
+                    Toast.makeText(this@NewReviewActivity, "로그인 정보를 확인할 수 없습니다. 다시 로그인해주세요.", Toast.LENGTH_LONG).show()
                     return@launch
                 }
 
                 val userId = user.id.toString()
+                Log.d(TAG, "Using user ID for review: $userId")
 
-                // 2. places 테이블에 장소 정보 upsert
-                withContext(Dispatchers.IO) {
-                    try {
-                        val placeData = buildMap<String, Any> {
-                            put("kakao_place_id", kakaoPlaceId)
-                            put("name", placeName)
-                            put("address", address)
-                            lat?.let { put("lat", it) }
-                            lng?.let { put("lng", it) }
-                        }
+                // 2. places 테이블에 장소 정보 upsert (반드시 성공해야 함)
+                try {
+                    withContext(Dispatchers.IO) {
+                        val placeData = PlaceInsertDto(
+                            kakaoPlaceId = kakaoPlaceId,
+                            name = placeName,
+                            address = address,
+                            lat = lat,
+                            lng = lng
+                        )
 
                         SupabaseManager.client.postgrest["places"]
                             .upsert(placeData) {
                                 onConflict = "kakao_place_id"
                             }
-                        Log.d(TAG, "Place upserted: $kakaoPlaceId")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to upsert place", e)
-                        // places 테이블 upsert 실패해도 리뷰 저장은 계속 진행
+                        Log.d(TAG, "Place upserted successfully: $kakaoPlaceId")
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to upsert place", e)
+                    Log.e(TAG, "Exception details: ${e.javaClass.simpleName} - ${e.message}")
+                    e.printStackTrace()
+                    
+                    // RLS 정책 오류인 경우 더 명확한 메시지 표시
+                    val errorMessage = if (e.message?.contains("row-level security") == true) {
+                        "데이터베이스 권한 설정이 필요합니다.\nSupabase 대시보드에서 RLS 정책을 설정해주세요.\n자세한 내용은 SUPABASE_RLS_SETUP.md를 참고하세요."
+                    } else {
+                        "장소 정보 저장에 실패했습니다: ${e.message ?: "알 수 없는 오류"}"
+                    }
+                    
+                    Toast.makeText(
+                        this@NewReviewActivity,
+                        errorMessage,
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@launch
                 }
 
+                // 3. places 테이블에 장소가 존재하는지 확인 (추가 안전장치)
+                val placeExists = try {
+                    withContext(Dispatchers.IO) {
+                        val existingPlaces = SupabaseManager.client.postgrest["places"]
+                            .select {
+                                filter {
+                                    eq("kakao_place_id", kakaoPlaceId)
+                                }
+                            }
+                            .decodeList<PlaceDto>()
+                        existingPlaces.isNotEmpty()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to verify place existence", e)
+                    Log.e(TAG, "Exception details: ${e.javaClass.simpleName} - ${e.message}")
+                    e.printStackTrace()
+                    false
+                }
+                              
+                if (!placeExists) {
+                    Log.e(TAG, "Place does not exist after upsert: $kakaoPlaceId")
+                    Toast.makeText(
+                        this@NewReviewActivity,
+                        "장소 정보 확인에 실패했습니다. 다시 시도해주세요.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@launch
+                }
+                
                 // 이미지 업로드 및 URL 수집
                 val imageUrls: List<String>? = withContext(Dispatchers.IO) {
                     val urls = mutableListOf<String>()
@@ -356,7 +434,7 @@ class NewReviewActivity : AppCompatActivity() {
                     if (urls.isNotEmpty()) urls else null
                 }
 
-                // 3. reviews 테이블에 리뷰 저장
+                // 4. reviews 테이블에 리뷰 저장
                 val reviewData = ReviewInsertDto(
                     kakaoPlaceId = kakaoPlaceId,
                     userId = userId,
@@ -493,6 +571,24 @@ class NewReviewActivity : AppCompatActivity() {
     }
 
     @Serializable
+    private data class PlaceInsertDto(
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        val name: String,
+        val address: String,
+        val lat: Double? = null,
+        val lng: Double? = null
+    )
+
+    @Serializable
+    private data class PlaceDto(
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        val name: String? = null,
+        val address: String? = null,
+        val lat: Double? = null,
+        val lng: Double? = null
+    )
+
+    @Serializable
     private data class ReviewInsertDto(
         @SerialName("kakao_place_id") val kakaoPlaceId: String,
         @SerialName("user_id") val userId: String,
@@ -556,6 +652,55 @@ class NewReviewActivity : AppCompatActivity() {
             }
         }
     }
+    // Activity 시작 전 로그인 상태 확인
+    private fun checkLoginStatusBeforeStart() {
+        lifecycleScope.launch {
+            try {
+                val session = withContext(Dispatchers.IO) {
+                    SupabaseManager.client.auth.currentSessionOrNull()
+                }
+                val sessionUser = session?.user
+                if (session == null || sessionUser == null) {
+                    Log.w(TAG, "No active session at activity start")
+                    Toast.makeText(
+                        this@NewReviewActivity,
+                        "로그인이 필요합니다. 프로필에서 로그인해주세요.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    finish()
+                } else {
+                    Log.d(TAG, "User logged in: ${sessionUser.id}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking login status", e)
+                // 에러가 발생해도 계속 진행 (저장 시 다시 확인)
+            }
+        }
+    }
+
+    // 개발 모드 설정 (디버그 빌드에서만 활성화)
+    private fun setupDevMode() {
+        if (BuildConfig.DEBUG) {
+            binding.devModeContainer.visibility = View.VISIBLE
+            binding.btnUseDevDecibel.setOnClickListener {
+                val dbText = binding.etDevDecibel.text.toString().trim()
+                if (dbText.isNotEmpty()) {
+                    try {
+                        val dbValue = dbText.toInt().coerceIn(0, 120)
+                        finalMeasuredDb = dbValue
+                        switchToReviewWritingView(dbValue)
+                    } catch (e: NumberFormatException) {
+                        Toast.makeText(this, "올바른 숫자를 입력하세요 (0-120)", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(this, "데시벨 값을 입력하세요", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            binding.devModeContainer.visibility = View.GONE
+        }
+    }
+
     // ✅ 이 어노테이션을 함수 위에 추가하여 권한 관련 경고를 무시하도록 합니다.
     @SuppressLint("MissingPermission")
     private fun setupNoiseMeasurement() {

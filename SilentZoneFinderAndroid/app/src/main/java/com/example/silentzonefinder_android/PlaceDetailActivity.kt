@@ -95,7 +95,23 @@ class PlaceDetailActivity : AppCompatActivity() {
         }
 
         notificationButton.setOnClickListener {
-            toggleNotification()
+            val wasOn = isNotificationOn
+            toggleNotification { isNowOn ->
+                if (isNowOn && !wasOn) {
+                    Toast.makeText(
+                        this@PlaceDetailActivity,
+                        getString(R.string.notification_enabled_message),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    openNoiseThresholdSettings()
+                } else if (!isNowOn && wasOn) {
+                    Toast.makeText(
+                        this@PlaceDetailActivity,
+                        getString(R.string.notification_disabled_message),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
         }
     }
 
@@ -163,6 +179,11 @@ class PlaceDetailActivity : AppCompatActivity() {
             lng = currentLng
         )
         newReviewLauncher.launch(intent)
+    }
+
+    private fun openNoiseThresholdSettings() {
+        val intent = Intent(this@PlaceDetailActivity, NoiseThresholdActivity::class.java)
+        startActivity(intent)
     }
 
     private fun ReviewDto.toUiModel(): ReviewUiModel {
@@ -398,13 +419,14 @@ class PlaceDetailActivity : AppCompatActivity() {
 
 
 
-    private fun toggleNotification() {
+    private fun toggleNotification(onComplete: ((Boolean) -> Unit)? = null) {
         val userId = currentUserId ?: run {
             Toast.makeText(
                 this,
                 getString(R.string.place_detail_login_required),
                 Toast.LENGTH_LONG
             ).show()
+            onComplete?.invoke(isNotificationOn)
             return
         }
 
@@ -463,6 +485,7 @@ class PlaceDetailActivity : AppCompatActivity() {
 
                 isNotificationOn = newState
                 updateNotificationButtonIcon()
+                onComplete?.invoke(newState)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to toggle notification", e)
@@ -471,6 +494,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                     "알림 설정 변경에 실패했어요.",
                     Toast.LENGTH_SHORT
                 ).show()
+                onComplete?.invoke(isNotificationOn)
             }
         }
     }
@@ -642,13 +666,16 @@ class PlaceDetailActivity : AppCompatActivity() {
     @Serializable
     private data class FavoriteDto(
         @SerialName("user_id") val userId: String,
-        @SerialName("kakao_place_id") val kakaoPlaceId: String
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("alert_threshold_db") val alertThresholdDb: Double? = null,
+        @SerialName("created_at") val createdAt: String? = null
     )
 
     @Serializable
     private data class FavoriteInsertDto(
         @SerialName("user_id") val userId: String,
-        @SerialName("kakao_place_id") val kakaoPlaceId: String
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("alert_threshold_db") val alertThresholdDb: Double? = null
     )
 
     @Serializable
@@ -664,9 +691,6 @@ class PlaceDetailActivity : AppCompatActivity() {
         val nickname: String? = null,
         @SerialName("avatar_url") val avatarUrl: String? = null
     )
-
-
-
 
     companion object {
         private const val TAG = "PlaceDetailActivity"

@@ -5,9 +5,9 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="12dp"
+    app:cardBackgroundColor="@android:color/white"
     app:cardCornerRadius="10dp"
-    app:cardElevation="2dp"
-    app:cardBackgroundColor="@android:color/white">
+    app:cardElevation="2dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -15,14 +15,12 @@
         android:orientation="vertical"
         android:padding="12dp">
 
-        <!-- 1줄: 이름 / 주소 / 오른쪽 dB + 배지 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-            <!-- 왼쪽: 장소명 + 주소 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -48,19 +46,21 @@
                     tools:text="123 Main St, Downtown" />
             </LinearLayout>
 
-            <!-- 오른쪽: dB + 배지 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="end">
+                android:gravity="end"
+                android:orientation="vertical">
 
                 <TextView
                     android:id="@+id/tvDecibel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:background="@drawable/bg_decibel_label"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="4dp"
                     android:textColor="@android:color/black"
-                    android:textSize="16sp"
+                    android:textSize="15sp"
                     android:textStyle="bold"
                     tools:text="42 dB" />
 
@@ -69,11 +69,11 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
+                    android:background="@drawable/badge_shape"
+                    android:paddingBottom="3dp"
                     android:paddingLeft="10dp"
                     android:paddingRight="10dp"
                     android:paddingTop="3dp"
-                    android:paddingBottom="3dp"
-                    android:background="@drawable/badge_shape"
                     android:textColor="@android:color/white"
                     android:textSize="11sp"
                     android:textStyle="bold"
@@ -81,20 +81,19 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 2줄: 별점 / 리뷰수 + 오른쪽 아이콘 그룹 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-            <!-- 왼쪽: 별점 + 리뷰 수 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
                 <TextView
                     android:id="@+id/tvRating"
@@ -111,40 +110,34 @@
                     android:layout_marginStart="4dp"
                     android:textColor="#6B7280"
                     android:textSize="12sp"
-                    tools:text="(18 reviews)" />
+                    tools:text="(2 reviews)" />
             </LinearLayout>
 
-            <!-- 오른쪽: 하트 + 알림 묶음 -->
             <LinearLayout
                 android:id="@+id/layoutFavoriteIcons"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
                 android:gravity="center_vertical"
+                android:orientation="horizontal"
                 android:paddingEnd="12dp">
 
-                <!-- 하트 아이콘 -->
                 <ImageView
                     android:id="@+id/btnRemoveFavorite"
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:layout_marginEnd="6dp"
-                    android:src="@drawable/ic_favorite"
                     android:contentDescription="@string/place_detail_favorite_remove"
+                    android:src="@drawable/ic_favorite"
                     app:tint="#EF4444" />
 
-                <!-- 알림 아이콘 (하트 오른쪽) -->
                 <ImageView
                     android:id="@+id/ivNotificationStatus"
                     android:layout_width="22dp"
                     android:layout_height="22dp"
-                    android:src="@drawable/ic_bell"
                     android:clickable="true"
-                    android:focusable="true" />
-
-
+                    android:focusable="true"
+                    android:src="@drawable/ic_bell" />
             </LinearLayout>
         </LinearLayout>
-
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>
