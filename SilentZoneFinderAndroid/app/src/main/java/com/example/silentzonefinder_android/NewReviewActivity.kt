@@ -3,32 +3,40 @@ package com.example.silentzonefinder_android
 import android.Manifest
 import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresPermission
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import com.example.silentzonefinder_android.adapter.ReviewImageAdapter
+import com.example.silentzonefinder_android.data.ReviewImage
 import com.example.silentzonefinder_android.databinding.ActivityNewReviewBinding
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.util.UUID
 
+private const val STATE_IMAGE_URIS = "state_image_uris"
 class NewReviewActivity : AppCompatActivity() {
     private lateinit var binding: ActivityNewReviewBinding
     private val REQUEST_RECORD_AUDIO_PERMISSION = 200 // 녹음 권한 요청 코드
@@ -43,6 +51,10 @@ class NewReviewActivity : AppCompatActivity() {
     private val RECORDER_AUDIO_ENCODING = AudioFormat.ENCODING_PCM_16BIT
     private val BUFFER_SIZE = AudioRecord.getMinBufferSize(RECORDER_SAMPLERATE, RECORDER_CHANNELS, RECORDER_AUDIO_ENCODING)
     private var finalMeasuredDb: Int = 0 // 측정된 최종 dB 값을 저장할 변수
+
+    //Image
+    private lateinit var imageAdapter: ReviewImageAdapter
+    private val uploadedImages = mutableListOf<ReviewImage>() // 관리할 이미지 리스트
 
     // Intent로 받은 장소 정보
     private var kakaoPlaceId: String = ""
@@ -111,6 +123,17 @@ class NewReviewActivity : AppCompatActivity() {
         binding = ActivityNewReviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        //상태 복구 로직 (화면 회전 시 이미지 유지)
+        if (savedInstanceState != null) {
+            // 1. 저장된 URI 리스트를 가져옵니다.
+            val uris = savedInstanceState.getParcelableArrayList<Uri>(STATE_IMAGE_URIS)
+
+            // 2. 리스트가 null이 아니라면 반복문을 통해 복구합니다.
+            uris?.forEach { uri ->
+                // ReviewImage 객체로 변환하여 리스트에 추가합니다.
+                uploadedImages.add(ReviewImage(uri))
+            }
+        }
         // Intent에서 장소 정보 받기
         reviewId = intent.getLongExtra(EXTRA_REVIEW_ID, -1L)
         isEditMode = reviewId > 0
@@ -143,7 +166,18 @@ class NewReviewActivity : AppCompatActivity() {
             // 새 리뷰 모드: 소음 측정 시작
             checkAudioPermission()
         }
+        setupImageRecyclerView()
+        setupImageUpload() //image button listener
         setupSubmitButton()
+    }
+
+    //Activity가 파괴되기 전에 현재 선택된 이미지 URI 목록을 저장: 이미지 URI 목록을 화면 회전이나 백그라운드 강제 종료로부터 보호하기 위함
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+
+        // 현재 uploadedImages 리스트에서 Uri만 추출하여 Bundle에 저장합니다.
+        val uriList = ArrayList(uploadedImages.map { it.uri })
+        outState.putParcelableArrayList(STATE_IMAGE_URIS, uriList)
     }
     
     private fun loadExistingReview() {
@@ -299,13 +333,33 @@ class NewReviewActivity : AppCompatActivity() {
                     }
                 }
 
+                // 이미지 업로드 및 URL 수집
+                val imagesJson: String? = withContext(Dispatchers.IO) {
+                    val urls = mutableListOf<String>()
+
+                    // 선택된 이미지 리스트(uploadedImages)를 하나씩 업로드
+                    for (image in uploadedImages) {
+                        val url = uploadImageToSupabase(image)
+                        if (url != null) {
+                            urls.add(url)
+                        }
+                    }
+
+                    // URL 리스트를 JSON 문자열로 변환 (예: ["url1", "url2"])
+                    if (urls.isNotEmpty()) {
+                        urls.joinToString(prefix = "[\"", separator = "\",\"", postfix = "\"]")
+                    } else {
+                        null // 이미지가 없으면 null
+                    }
+                }
+
                 // 3. reviews 테이블에 리뷰 저장
                 val reviewData = ReviewInsertDto(
                     kakaoPlaceId = kakaoPlaceId,
                     userId = userId,
                     rating = rating,
                     text = text,
-                    images = null, // 현재는 이미지 없음
+                    images = imagesJson, // 업로드된 URL 목록
                     noiseLevelDb = noiseLevelDb
                 )
 
@@ -421,7 +475,7 @@ class NewReviewActivity : AppCompatActivity() {
         @SerialName("user_id") val userId: String,
         val rating: Int,
         val text: String,
-        val images: List<String>? = null,
+        val images: String? = null,
         @SerialName("noise_level_db") val noiseLevelDb: Double
     )
     private fun getSelectedAmenities(): String {
@@ -607,6 +661,85 @@ class NewReviewActivity : AppCompatActivity() {
             db <= 58 -> "Quiet Conversation"
             db <= 70 -> "Lively Chatter"
             else -> "High Traffic"
+        }
+    }
+
+    // 갤러리 Intent를 실행하고 결과를 처리하는 Launcher
+    private val imagePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            // 이미지 선택 성공
+            val uri = result.data?.data
+            if (uri != null) {
+                val newImage = ReviewImage(uri)
+                //전체 뷰를 다시 그릴 필요 없이 해당 위치의 뷰만 업데이트
+                uploadedImages.add(newImage) // 1. 데이터 리스트에 데이터 추가
+                imageAdapter.notifyItemInserted(uploadedImages.size - 1) // 2. UI에 데이터 추가를 알림
+            }
+        }
+    }
+
+    private fun openGallery() {
+        // Intent.ACTION_PICK을 사용하여 갤러리를 엽니다.
+        val intent = Intent(Intent.ACTION_PICK).apply {
+            type = "image/*" // 이미지 타입만 필터링
+        }
+        imagePickerLauncher.launch(intent)
+    }
+    private fun setupImageUpload() {
+        binding.btnAddImage.setOnClickListener {
+            openGallery()
+        }
+    }
+
+    private fun setupImageRecyclerView() {
+        //RecyclerView 초기화 함수
+
+        imageAdapter = ReviewImageAdapter(uploadedImages) { imageToDelete ->
+            // 이미지 삭제 로직 (Delete 버튼 클릭 시 호출됨)
+            val position = uploadedImages.indexOf(imageToDelete)
+            if (position != -1) {
+                uploadedImages.removeAt(position)
+                imageAdapter.notifyItemRemoved(position)
+            }
+        }
+
+        // RecyclerView 설정
+        binding.rvImages.adapter = imageAdapter
+        // (LayoutManager는 XML에서 이미 설정했습니다.)
+    }
+
+    private suspend fun uploadImageToSupabase(image: ReviewImage): String? {
+        val storage = SupabaseManager.client.storage
+        val bucketName = "review-images"
+
+        val fileName = "${UUID.randomUUID()}.jpg"
+
+        return try {
+            val bytes = contentResolver.openInputStream(image.uri)?.use { it.readBytes() }
+
+            if (bytes == null) {
+                Log.e("SupabaseUpload", "이미지 데이터를 읽을 수 없습니다.")
+                return null
+            }
+
+            storage.from(bucketName).upload(
+                path = fileName,
+                data = bytes
+            ) {
+                upsert = false
+            }
+
+            // 공개 URL 가져오기
+            val publicUrl = storage.from(bucketName).publicUrl(fileName)
+
+            Log.d("SupabaseUpload", "Image uploaded: $publicUrl")
+            publicUrl
+
+        } catch (e: Exception) {
+            Log.e("SupabaseUpload", "이미지 업로드 실패: ${e.message}")
+            null
         }
     }
 }
