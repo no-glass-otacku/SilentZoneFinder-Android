@@ -129,11 +129,11 @@ object NotificationHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_THRESHOLD_ALERT)
             .setSmallIcon(R.drawable.ic_notifications)
-            .setContentTitle("소음 임계값 초과")
-            .setContentText("${placeName}이 ${thresholdDb.toInt()} dB 임계값을 초과했습니다 (${detectedDb.toInt()} dB 감지됨).")
+            .setContentTitle("조용해졌어요")
+            .setContentText("${placeName}이 ${thresholdDb.toInt()} dB 임계값 이하로 내려갔습니다 (${detectedDb.toInt()} dB 감지).")
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("${placeName}이 ${thresholdDb.toInt()} dB 임계값을 초과했습니다 (${detectedDb.toInt()} dB 감지됨).")
+                    .bigText("${placeName}이 ${thresholdDb.toInt()} dB 임계값 이하로 내려갔습니다 (${detectedDb.toInt()} dB 감지).")
             )
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -150,9 +150,9 @@ object NotificationHelper {
             context,
             NotificationHistoryItem(
                 id = UUID.randomUUID().toString(),
-                type = NotificationType.THRESHOLD_ALERT,
-                title = "소음 임계값 초과",
-                message = "${placeName}이 ${thresholdDb.toInt()} dB 임계값을 초과했습니다 (${detectedDb.toInt()} dB 감지됨).",
+                    type = NotificationType.THRESHOLD_ALERT,
+                    title = "조용해졌어요",
+                    message = "${placeName}이 ${thresholdDb.toInt()} dB 임계값 이하로 내려갔습니다 (${detectedDb.toInt()} dB 감지).",
                 placeName = placeName,
                 placeId = kakaoPlaceId,
                 timestamp = System.currentTimeMillis(),

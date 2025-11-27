@@ -59,7 +59,7 @@ import com.kakao.vectormap.mapwidget.component.Vertical
 import com.example.silentzonefinder_android.notifications.ReviewNotificationWatcher
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.engine.android.Android
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
@@ -72,6 +72,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
 import java.util.Locale
 import kotlin.math.asin
 import kotlin.math.cos
@@ -101,7 +102,7 @@ class MainActivity : AppCompatActivity() {
     private var lastLoadedZoomLevel: Int = -1
     private val cameraMoveDebounceMillis = 600L
     private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private val httpClient = HttpClient(Android) {
+    private val httpClient = HttpClient(OkHttp) {
         install(ContentNegotiation) {
             json(Json {
                 ignoreUnknownKeys = true
@@ -109,6 +110,7 @@ class MainActivity : AppCompatActivity() {
             })
         }
     }
+    private var shouldClearSearchResultsOnResume = false
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -124,6 +126,21 @@ class MainActivity : AppCompatActivity() {
                 getString(R.string.location_permission_denied),
                 Toast.LENGTH_LONG
             ).show()
+        }
+    }
+
+    private val searchHistoryLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val selectedQuery = result.data
+                ?.getStringExtra(SearchHistoryActivity.EXTRA_SELECTED_QUERY)
+                ?.takeIf { it.isNotBlank() }
+                ?: return@registerForActivityResult
+
+            binding.searchEditText.setText(selectedQuery)
+            binding.searchEditText.setSelection(selectedQuery.length)
+            performSearch()
         }
     }
 
@@ -154,6 +171,11 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNavigation.selectedItemId = R.id.navigation_map
         // Disable transition animations when returning to this activity.
         overridePendingTransition(0, 0)
+
+        if (shouldClearSearchResultsOnResume) {
+            shouldClearSearchResultsOnResume = false
+            exitSearchMode(resetQueryField = false, reason = "return_from_detail")
+        }
 
         if (kakaoMap != null) {
             loadPlacesWithReviews()
@@ -248,6 +270,15 @@ class MainActivity : AppCompatActivity() {
             performSearch()
         }
 
+        binding.searchHistoryButton.setOnClickListener {
+            val intent = Intent(this, SearchHistoryActivity::class.java)
+            searchHistoryLauncher.launch(intent)
+        }
+
+        binding.resetSearchButton.setOnClickListener {
+            exitSearchMode(resetQueryField = true, reason = "manual")
+        }
+
         binding.searchEditText.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                 performSearch()
@@ -283,6 +314,32 @@ class MainActivity : AppCompatActivity() {
         setupSearchHistoryAdapter()
     }
 
+    private fun exitSearchMode(
+        resetQueryField: Boolean,
+        reason: String = "auto"
+    ) {
+        shouldClearSearchResultsOnResume = false
+        if (!binding.searchResultsCard.isVisible &&
+            !binding.searchResultsRecyclerView.isVisible &&
+            binding.searchEditText.text.isNullOrEmpty()
+        ) {
+            return
+        }
+
+        if (resetQueryField) {
+            binding.searchEditText.text?.clear()
+        }
+        binding.searchEditText.clearFocus()
+        searchResultsAdapter.submitList(emptyList())
+        binding.searchResultsCard.isVisible = false
+        binding.searchResultsRecyclerView.isVisible = false
+        closeInfoWindow()
+        clearSelectedPlaceMarker()
+        clearMarkers()
+        renderFilteredMarkers()
+        android.util.Log.d("MainActivity", "Exited search mode ($reason)")
+    }
+
     private fun setupSearchResultsList() {
         searchResultsAdapter = PlaceSearchAdapter { place ->
             val lat = place.y.toDoubleOrNull()
@@ -291,6 +348,7 @@ class MainActivity : AppCompatActivity() {
             binding.categoryChipGroup.clearCheck()
             showSearchResults(emptyList(), renderMarkersWhenEmpty = false)
             val address = place.road_address_name.takeIf { it.isNotBlank() } ?: place.address_name
+            shouldClearSearchResultsOnResume = true
             openPlaceDetail(
                 placeId = place.id,
                 name = place.place_name,

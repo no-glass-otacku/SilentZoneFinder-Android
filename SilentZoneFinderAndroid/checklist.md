@@ -209,10 +209,10 @@
   - [x] 백그라운드 작업 (WorkManager, PeriodicWorkRequest)
   - [x] 알림 발송 로직 (NotificationHelper)
 
-- [ ] **Noise Threshold Alert 구현** (Figma 디자인 반영)
-  - [ ] 소음 임계값 설정 기능
-  - [ ] 임계값 초과 시 알림 발송
-  - [ ] 알림 UI 디자인 구현
+- [x] **Noise Threshold Alert 구현** (Figma 디자인 반영)
+  - [x] 소음 임계값 설정 기능
+  - [x] 임계값 초과 시 알림 발송
+  - [x] 알림 UI 디자인 구현
 
 - [x] **NotificationHistoryActivity 구현**
   - [x] 알림 히스토리 목록 표시 (NotificationHistoryAdapter)
@@ -344,7 +344,7 @@
 
 - [x] **검색 기록 저장** ✅
   - [x] 최근 검색어 저장 (Room DB 또는 SharedPreferences) - SharedPreferences로 구현 완료
-  - [ ] 검색 기록 관리 화면 (검색/삭제)
+- [x] 검색 기록 관리 화면 (검색/삭제)
   - [x] 자동완성 기능 연동
 
 - [ ] **설정 정보 저장**
@@ -554,16 +554,16 @@ CREATE TABLE profiles (
 - Noise Trend Today 그래프 (최근 리뷰 기반)
 - 알림 권한 및 WorkManager (조용한 장소 추천 알림)
 - NotificationHistoryActivity (알림 히스토리)
+- Noise Threshold Alert (임계값 설정 및 초과 알림)
 
 **🔄 진행 중/예정:**
 - MainActivity에서 즐겨찾기 마커 표시
 - 리뷰 이미지 업로드
-- Noise Threshold Alert (임계값 설정)
 - Optimal Spots 화면 구현
 
 ---
 
-**마지막 업데이트**: 2025-01-24
+**마지막 업데이트**: 2025-11-27
 **프로젝트**: SilentZoneFinder Android
 **Figma 디자인**: https://www.figma.com/design/F5LHvHsGsOpHQRcn1SabmC/silentZone
 

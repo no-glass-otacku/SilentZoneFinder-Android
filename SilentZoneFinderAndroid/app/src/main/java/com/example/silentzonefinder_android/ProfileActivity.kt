@@ -14,11 +14,6 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import coil.load
 import com.example.silentzonefinder_android.databinding.ActivityProfileBinding
 import com.example.silentzonefinder_android.utils.PermissionHelper
@@ -31,7 +26,6 @@ import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.storage.storage
 import io.ktor.http.ContentType
 import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 
 class ProfileActivity : AppCompatActivity() {
@@ -389,6 +383,10 @@ class ProfileActivity : AppCompatActivity() {
                 else -> return@setOnItemSelectedListener false
             }
 
+            if (targetActivity == this::class.java) {
+                return@setOnItemSelectedListener true
+            }
+
             val intent = Intent(this, targetActivity)
             intent.addFlags(
                 Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
@@ -401,24 +399,10 @@ class ProfileActivity : AppCompatActivity() {
     }
 
     private fun scheduleQuietZoneWorker() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val workRequest = PeriodicWorkRequestBuilder<QuietZoneWorker>(
-            15, TimeUnit.MINUTES
-        )
-            .setConstraints(constraints)
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "quiet_zone_worker",
-            ExistingPeriodicWorkPolicy.KEEP,
-            workRequest
-        )
+        QuietZoneWorker.schedule(this)
     }
 
     private fun cancelQuietZoneWorker() {
-        WorkManager.getInstance(this).cancelUniqueWork("quiet_zone_worker")
+        QuietZoneWorker.cancel(this)
     }
 }

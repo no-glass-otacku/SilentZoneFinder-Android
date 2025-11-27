@@ -42,6 +42,9 @@
             android:name=".NotificationHistoryActivity"
             android:exported="false" />
         <activity
+            android:name=".SearchHistoryActivity"
+            android:exported="false" />
+        <activity
             android:name=".NoiseThresholdActivity"
             android:exported="false" />
         <activity
