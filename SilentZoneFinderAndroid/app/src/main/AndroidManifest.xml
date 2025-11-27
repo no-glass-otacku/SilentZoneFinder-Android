@@ -38,7 +38,7 @@
             android:name=".NotificationHistoryActivity"
             android:exported="false" />
         <activity
-            android:name=".SettingsActivity"
+            android:name=".ContactSupportActivity"
             android:exported="false" />
         <activity
             android:name=".ProfileActivity"

@@ -15,12 +15,8 @@ import io.github.jan.supabase.exceptions.HttpRequestException
 import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.storage.storage
 import android.app.AlertDialog
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import coil.load
 import io.ktor.http.ContentType
 import kotlinx.coroutines.launch
@@ -64,20 +60,31 @@ class ProfileActivity : AppCompatActivity() {
         binding = ActivityProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        binding.bottomNavigation.selectedItemId = R.id.navigation_profile
+
         // 프로필 이미지용 런처 초기화
         initImagePickLaunchers()
 
-        setupBottomNavigation()
         setupClickListeners()
     }
 
     override fun onResume() {
         super.onResume()
-        // SharedPreferences에 저장된 로그인 상태 확인
+
+        // 하단 네비게이션 리스너 재등록
+        setupBottomNavigation()
+
+        // 현재 탭을 Profile로 강제 지정 (파란색 아이콘)
+        binding.bottomNavigation.selectedItemId = R.id.navigation_profile
+
+        // 기존 로직
         checkLoginStatus()
-        // SharedPreferences에 저장된 프로필 이미지 URL로 다시 로드
         loadProfileImageFromSupabase()
+
+        // 필요하면 애니메이션 제거도 여기서
+        // overridePendingTransition(0, 0)
     }
+
 
 
     // -----------------------------
@@ -95,9 +102,8 @@ class ProfileActivity : AppCompatActivity() {
         binding.textUserName.text = name
         binding.textUserEmail.text = email
 
-        // 현재는 더미 숫자. 추후 실제 데이터로 바꾸면 됨
         binding.textReviewCount.text = "12"
-        binding.textOptimalCount.text = "8"
+
     }
 
     private fun checkLoginStatus() {
@@ -225,8 +231,8 @@ class ProfileActivity : AppCompatActivity() {
         }
 
         // 설정 화면 이동
-        rowSettings.setOnClickListener {
-            val intent = Intent(this@ProfileActivity, SettingsActivity::class.java)
+        rowContactSupport.setOnClickListener {
+            val intent = Intent(this@ProfileActivity, ContactSupportActivity::class.java)
             startActivity(intent)
         }
 
@@ -383,24 +389,45 @@ class ProfileActivity : AppCompatActivity() {
 
 
 
+
     // -----------------------------
     // 하단 네비게이션
     // -----------------------------
     private fun setupBottomNavigation() {
+
         binding.bottomNavigation.setOnItemSelectedListener { item ->
+
             val targetActivity = when (item.itemId) {
+
+                // Map 화면
                 R.id.navigation_map -> MainActivity::class.java
+
+                // My Reviews 화면
                 R.id.navigation_my_reviews -> MyReviewsActivity::class.java
+
+                // My Favorites 화면
                 R.id.navigation_my_favorite -> MyFavoritesActivity::class.java
-                R.id.navigation_profile -> ProfileActivity::class.java
+
+                // Profile 화면
+                R.id.navigation_profile -> {
+                    return@setOnItemSelectedListener true
+                }
+
                 else -> return@setOnItemSelectedListener false
             }
 
-            val intent = Intent(this, targetActivity)
-            intent.addFlags(
-                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-            )
+            // 동일 화면이면 다시 실행하지 않음
+            if (targetActivity == this::class.java) {
+                return@setOnItemSelectedListener true
+            }
+
+            val intent = Intent(this, targetActivity).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+
             startActivity(intent)
             overridePendingTransition(0, 0)
             true
