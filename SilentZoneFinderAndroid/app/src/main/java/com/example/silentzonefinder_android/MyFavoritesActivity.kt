@@ -293,11 +293,15 @@ class MyFavoritesActivity : AppCompatActivity() {
 
 
     private fun openPlaceDetail(favorite: FavoritePlace) {
-        val intent = Intent(this, PlaceDetailActivity::class.java).apply {
-            putExtra("kakao_place_id", favorite.kakaoPlaceId)
-            putExtra("place_name", favorite.placeName)
-            putExtra("place_address", favorite.address)
-        }
+        val intent = PlaceDetailActivity.createIntent(
+            context = this,
+            placeId = favorite.kakaoPlaceId,
+            placeName = favorite.placeName,
+            address = favorite.address,
+            category = null,      // 즐겨찾기에는 카테고리 정보가 없으니까 일단 null
+            lat = null,
+            lng = null
+        )
         startActivity(intent)
     }
 
