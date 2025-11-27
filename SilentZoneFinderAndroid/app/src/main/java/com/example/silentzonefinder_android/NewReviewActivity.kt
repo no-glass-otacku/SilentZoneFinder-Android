@@ -55,6 +55,7 @@ class NewReviewActivity : AppCompatActivity() {
     //Image
     private lateinit var imageAdapter: ReviewImageAdapter
     private val uploadedImages = mutableListOf<ReviewImage>() // 관리할 이미지 리스트
+    private var currentPhotoUri: Uri? = null // 카메라로 찍을 사진의 URI 임시 저장소
 
     // Intent로 받은 장소 정보
     private var kakaoPlaceId: String = ""
@@ -680,6 +681,46 @@ class NewReviewActivity : AppCompatActivity() {
         }
     }
 
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            currentPhotoUri?.let { uri ->
+                val newImage = ReviewImage(uri)
+                uploadedImages.add(newImage)
+                imageAdapter.notifyItemInserted(uploadedImages.size - 1)
+            }
+        }
+    }
+
+    // 카메라 권한 요청 결과를 처리하는 런처
+    private val requestCameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            // 권한이 허용되면 카메라 열기
+            openCamera()
+        } else {
+            Toast.makeText(this, "카메라 권한이 필요합니다.", Toast.LENGTH_SHORT).show()
+        }
+    }
+    // 카메라 권한을 확인하고 처리하는 함수
+    private fun checkCameraPermissionAndOpen() {
+        when {
+            // 1. 이미 권한이 있는 경우 -> 바로 카메라 실행
+            ContextCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED -> {
+                openCamera()
+            }
+            // 2. 권한이 없는 경우 -> 권한 요청 팝업 띄우기
+            else -> {
+                requestCameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+            }
+        }
+    }
+
     private fun openGallery() {
         // Intent.ACTION_PICK을 사용하여 갤러리를 엽니다.
         val intent = Intent(Intent.ACTION_PICK).apply {
@@ -689,8 +730,42 @@ class NewReviewActivity : AppCompatActivity() {
     }
     private fun setupImageUpload() {
         binding.btnAddImage.setOnClickListener {
-            openGallery()
+            showImageSourceDialog()
         }
+    }
+    private fun openCamera() {
+        // 1. 임시 파일 생성
+        val photoFile = java.io.File.createTempFile(
+            "IMG_${System.currentTimeMillis()}_",
+            ".jpg",
+            externalCacheDir
+        )
+
+        // 2. URI 생성 (FileProvider 이용)
+        currentPhotoUri = androidx.core.content.FileProvider.getUriForFile(
+            this,
+            "${packageName}.fileprovider", // Manifest와 동일해야 함
+            photoFile
+        )
+
+        // 3. 카메라 실행
+        // currentPhotoUri가 null이 아닐 때만 launch를 실행
+        currentPhotoUri?.let { uri ->
+            cameraLauncher.launch(uri)
+        }
+    }
+    private fun showImageSourceDialog() {
+        val options = arrayOf("Camera", "Gallery")
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Select Image Source")
+            .setItems(options) { dialog, which ->
+                when (which) {
+                    0 -> checkCameraPermissionAndOpen()  // 카메라 선택- 권한 확인 후 실행
+                    1 -> openGallery() // 갤러리 선택
+                }
+            }
+            .show()
     }
 
     private fun setupImageRecyclerView() {

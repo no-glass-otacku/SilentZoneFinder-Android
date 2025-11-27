@@ -177,7 +177,8 @@ class PlaceDetailActivity : AppCompatActivity() {
             text = text ?: "",
             noiseLevelDb = noiseLevelDb,
             createdDate = displayDate,
-            amenities = amenities ?: emptyList()
+            amenities = amenities ?: emptyList(),
+            images = images ?: emptyList()
         )
     }
 
