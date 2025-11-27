@@ -12,6 +12,8 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.text.TextWatcher
+import android.text.Editable
 import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
 import android.widget.TextView
@@ -30,6 +32,7 @@ import com.example.silentzonefinder_android.databinding.ActivityMainBinding
 import com.example.silentzonefinder_android.adapter.PlaceSearchAdapter
 import com.example.silentzonefinder_android.PlaceDetailActivity
 import com.example.silentzonefinder_android.SupabaseManager
+import com.example.silentzonefinder_android.utils.SearchHistoryManager
 import io.github.jan.supabase.postgrest.postgrest
 import com.kakao.vectormap.KakaoMap
 import com.kakao.vectormap.KakaoMapReadyCallback
@@ -53,6 +56,7 @@ import com.kakao.vectormap.mapwidget.component.GuiText
 import com.kakao.vectormap.mapwidget.component.Horizontal
 import com.kakao.vectormap.mapwidget.component.Orientation
 import com.kakao.vectormap.mapwidget.component.Vertical
+import com.example.silentzonefinder_android.notifications.ReviewNotificationWatcher
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.android.Android
@@ -80,6 +84,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var kakaoMap: KakaoMap? = null
     private lateinit var searchResultsAdapter: PlaceSearchAdapter
+    private var searchHistoryAdapter: ArrayAdapter<String>? = null
     private var categorySearchJob: Job? = null
     private var labelLayer: LabelLayer? = null
     private var infoWindowLayer: InfoWindowLayer? = null
@@ -135,6 +140,8 @@ class MainActivity : AppCompatActivity() {
         setupCategoryChips()
         setupFilterDropdown()
         setupMyLocationButton()
+
+        ReviewNotificationWatcher(this, SupabaseManager.client).start()
     }
 
     override fun onResume() {
@@ -249,6 +256,31 @@ class MainActivity : AppCompatActivity() {
                 false
             }
         }
+
+        // 검색 입력 필드 포커스 시 검색 기록 표시
+        binding.searchEditText.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                showSearchHistory()
+            } else {
+                hideSearchHistory()
+            }
+        }
+
+        // 검색 입력 필드 텍스트 변경 시 필터링
+        binding.searchEditText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                if (s.isNullOrEmpty()) {
+                    showSearchHistory()
+                } else {
+                    filterSearchHistory(s.toString())
+                }
+            }
+        })
+
+        // 검색 기록 어댑터 초기화
+        setupSearchHistoryAdapter()
     }
 
     private fun setupSearchResultsList() {
@@ -281,7 +313,7 @@ class MainActivity : AppCompatActivity() {
             if (checkedIds.isEmpty()) {
                 categorySearchJob?.cancel()
                 showSearchResults(emptyList())
-                updateCategoryLabels("", emptyList())
+                updateCategoryLabels(null, emptyList())
                 return@setOnCheckedStateChangeListener
             }
 
@@ -304,18 +336,12 @@ class MainActivity : AppCompatActivity() {
         categorySearchJob = lifecycleScope.launch {
             try {
                 val results = requestCategoryPlaces(option, center)
-                updateCategoryLabels(option.label, results)
-                val message = if (results.isEmpty()) {
-                    "No ${option.label.lowercase(Locale.US)} found nearby."
-                } else {
-                    "${results.size} ${option.label.lowercase(Locale.US)} found nearby."
-                }
-                Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                updateCategoryLabels(option, results)
                 showSearchResults(emptyList(), renderMarkersWhenEmpty = false)
             } catch (e: Exception) {
                 android.util.Log.e("MainActivity", "Category search failed", e)
                 Toast.makeText(this@MainActivity, "Category search failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                updateCategoryLabels(option.label, emptyList())
+                updateCategoryLabels(option, emptyList())
                 showSearchResults(emptyList())
                 binding.categoryChipGroup.clearCheck()
             }
@@ -365,19 +391,58 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateCategoryLabels(categoryLabel: String, places: List<PlaceDocument>) {
-        if (places.isEmpty()) {
+    private fun updateCategoryLabels(option: CategoryOption?, places: List<PlaceDocument>) {
+        if (option == null || places.isEmpty()) {
             renderFilteredMarkers()
             return
         }
 
-        val ids = places.map { it.id }.toSet()
-        val matchedPlaces = visiblePlaceMarkers.filter { ids.contains(it.kakaoPlaceId) }
+        if (allPlaceMarkers.isEmpty()) {
+            Toast.makeText(
+                this,
+                getString(R.string.map_no_review_places_for_category, option.label.ifBlank { "-" }),
+                Toast.LENGTH_SHORT
+            ).show()
+            renderFilteredMarkers()
+            return
+        }
+
+        // 카테고리 필터링: 카카오 API 결과의 카테고리 정보 확인
+        val filteredPlaces = places.filter { place ->
+            when (option.label) {
+                "Restaurants" -> {
+                    // Restaurants: FD6 카테고리이면서 카페가 아닌 것
+                    place.category_group_code == "FD6" && 
+                    !place.category_name.lowercase(Locale.US).contains("cafe") &&
+                    !place.category_name.lowercase(Locale.US).contains("카페")
+                }
+                "Cafes" -> {
+                    // Cafes: CE7 카테고리이거나 카테고리 이름에 cafe/카페가 포함된 것
+                    place.category_group_code == "CE7" ||
+                    place.category_name.lowercase(Locale.US).contains("cafe") ||
+                    place.category_name.lowercase(Locale.US).contains("카페")
+                }
+                "Bars" -> {
+                    // Bars: FD6 카테고리이면서 bar/바/술집이 포함된 것
+                    place.category_group_code == "FD6" &&
+                    (place.category_name.lowercase(Locale.US).contains("bar") ||
+                     place.category_name.lowercase(Locale.US).contains("바") ||
+                     place.category_name.lowercase(Locale.US).contains("술집") ||
+                     place.place_name.lowercase(Locale.US).contains("bar") ||
+                     place.place_name.lowercase(Locale.US).contains("바"))
+                }
+                else -> true
+            }
+        }
+
+        val ids = filteredPlaces.map { it.id }.toSet()
+        val markersById = allPlaceMarkers.associateBy { it.kakaoPlaceId }
+        val matchedPlaces = ids.mapNotNull { markersById[it]?.copy(categoryLabel = option.label) }
 
         if (matchedPlaces.isEmpty()) {
             Toast.makeText(
                 this,
-                getString(R.string.map_no_review_places_for_category, categoryLabel.ifBlank { "-" }),
+                getString(R.string.map_no_review_places_for_category, option.label.ifBlank { "-" }),
                 Toast.LENGTH_SHORT
             ).show()
             renderFilteredMarkers()
@@ -939,7 +1004,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         lastKnownCenter = location
-        updateCategoryLabels("", emptyList())
+        updateCategoryLabels(null, emptyList())
         clearMarkers()
     }
 
@@ -978,7 +1043,7 @@ class MainActivity : AppCompatActivity() {
         binding.searchEditText.clearFocus()
         binding.categoryChipGroup.clearCheck()
         showSearchResults(emptyList(), renderMarkersWhenEmpty = false)
-        updateCategoryLabels("", emptyList())
+        updateCategoryLabels(null, emptyList())
         clearSelectedPlaceMarker()
         closeInfoWindow()
         clearMarkers()
@@ -1014,6 +1079,8 @@ class MainActivity : AppCompatActivity() {
         showSearchResults(response.documents)
 
         if (response.documents.isNotEmpty()) {
+            // 검색 성공 시 검색 기록 저장
+            SearchHistoryManager.addSearchQuery(this@MainActivity, query)
             moveMapToPlace(response.documents[0], showToast = false)
         } else {
             Toast.makeText(this, "No results found.", Toast.LENGTH_SHORT).show()
@@ -1268,4 +1335,42 @@ class MainActivity : AppCompatActivity() {
         val lng: Double? = null,
         val category: String? = null
     )
+
+    private fun setupSearchHistoryAdapter() {
+        val history = SearchHistoryManager.getSearchQueries(this)
+        searchHistoryAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, history)
+        binding.searchEditText.setAdapter(searchHistoryAdapter)
+        
+        // 검색 기록 클릭 시 자동 검색
+        binding.searchEditText.setOnItemClickListener { _, _, position, _ ->
+            val selectedQuery = searchHistoryAdapter?.getItem(position) ?: return@setOnItemClickListener
+            binding.searchEditText.setText(selectedQuery)
+            binding.searchEditText.setSelection(selectedQuery.length)
+            binding.searchEditText.dismissDropDown()
+            performSearch()
+        }
+    }
+
+    private fun showSearchHistory() {
+        val history = SearchHistoryManager.getSearchQueries(this)
+        if (history.isNotEmpty()) {
+            searchHistoryAdapter?.clear()
+            searchHistoryAdapter?.addAll(history)
+            searchHistoryAdapter?.notifyDataSetChanged()
+        }
+    }
+
+    private fun hideSearchHistory() {
+        // 검색 기록 숨김 (자동으로 처리됨)
+    }
+
+    private fun filterSearchHistory(query: String) {
+        val allHistory = SearchHistoryManager.getSearchQueries(this)
+        val filtered = allHistory.filter { it.contains(query, ignoreCase = true) }
+        searchHistoryAdapter?.clear()
+        if (filtered.isNotEmpty()) {
+            searchHistoryAdapter?.addAll(filtered)
+        }
+        searchHistoryAdapter?.notifyDataSetChanged()
+    }
 }

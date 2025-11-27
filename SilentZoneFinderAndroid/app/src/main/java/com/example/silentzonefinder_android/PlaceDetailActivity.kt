@@ -23,6 +23,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import com.example.silentzonefinder_android.data.ReviewDto
+import kotlinx.coroutines.delay
 
 class PlaceDetailActivity : AppCompatActivity() {
 
@@ -38,6 +40,7 @@ class PlaceDetailActivity : AppCompatActivity() {
     private var currentUserId: String? = null
     private var isFavorite: Boolean = false
     private var isFavoriteLoading: Boolean = false
+    private var isNotificationOn: Boolean = false
 
     private val newReviewLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -70,7 +73,15 @@ class PlaceDetailActivity : AppCompatActivity() {
         setupNewReviewButton()
         setupHeaderControls()
         setupReviewFilters()
+
         loadFavoriteStatus()
+
+        lifecycleScope.launch {
+            // userId 로딩이 완료될 때까지 잠시 대기
+            delay(150)   // 100~200ms 정도면 충분 (UI 블로킹X)
+            loadNotificationStatus()
+        }
+
         loadReviews(currentPlaceId)
     }
 
@@ -78,14 +89,20 @@ class PlaceDetailActivity : AppCompatActivity() {
         backButton.setOnClickListener {
             onBackPressedDispatcher.onBackPressed()
         }
+
         favoriteButton.setOnClickListener {
             toggleFavorite()
         }
+
         notificationButton.setOnClickListener {
-            val intent = Intent(this@PlaceDetailActivity, NoiseThresholdActivity::class.java)
-            startActivity(intent)
+            toggleNotification()
+        }
+        notificationButton.setOnLongClickListener {
+            openNoiseThresholdSettings()
+            true
         }
     }
+
 
     private fun setupPlaceInfo(placeName: String, address: String, category: String) {
         binding.placeNameTextView.text = placeName
@@ -128,12 +145,12 @@ class PlaceDetailActivity : AppCompatActivity() {
         binding.fabNewReview.setOnClickListener {
             openNewReviewActivity()
         }
-        
+
         // 리뷰 섹션 헤더의 "리뷰 작성하기" 버튼
         binding.btnWriteReview.setOnClickListener {
             openNewReviewActivity()
         }
-        
+
         // 빈 리뷰 뷰의 "리뷰 작성하기" 버튼
         binding.btnWriteReviewFromEmpty.setOnClickListener {
             openNewReviewActivity()
@@ -151,6 +168,28 @@ class PlaceDetailActivity : AppCompatActivity() {
         )
         newReviewLauncher.launch(intent)
     }
+
+    private fun openNoiseThresholdSettings() {
+        val intent = Intent(this@PlaceDetailActivity, NoiseThresholdActivity::class.java)
+        startActivity(intent)
+    }
+
+    private fun ReviewDto.toUiModel(): ReviewUiModel {
+        val displayDate = createdAt
+            ?.takeIf { it.length >= 10 }
+            ?.substring(0, 10)
+            .orEmpty()
+
+        return ReviewUiModel(
+            id = id,
+            rating = rating,
+            text = text ?: "",
+            noiseLevelDb = noiseLevelDb,
+            createdDate = displayDate,
+            amenities = amenities ?: emptyList()
+        )
+    }
+
 
     private fun loadReviews(placeId: String) {
         lifecycleScope.launch {
@@ -258,6 +297,30 @@ class PlaceDetailActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateNotificationButtonIcon() {
+        if (isNotificationOn) {
+            // 알림 ON: 채워진 느낌의 알림 아이콘 사용 (이미 있는 ic_notifications)
+            binding.notificationButton.setImageResource(R.drawable.ic_notifications)
+            binding.notificationButton.imageTintList =
+                android.content.res.ColorStateList.valueOf(
+                    androidx.core.content.ContextCompat.getColor(this, R.color.primary_purple)
+                )
+        } else {
+            // 알림 OFF: 기존 벨 아이콘 + 회색
+            binding.notificationButton.setImageResource(R.drawable.ic_bell)
+            binding.notificationButton.imageTintList =
+                android.content.res.ColorStateList.valueOf(
+                    androidx.core.content.ContextCompat.getColor(this, R.color.grey)
+                )
+        }
+
+        // 접근성 텍스트는 하나만 공통으로 사용
+        binding.notificationButton.contentDescription =
+            getString(R.string.place_detail_notification)
+    }
+
+
+
     private fun loadFavoriteStatus() {
         lifecycleScope.launch {
             isFavoriteLoading = true
@@ -296,6 +359,137 @@ class PlaceDetailActivity : AppCompatActivity() {
         }
     }
 
+    private fun loadNotificationStatus() {
+        lifecycleScope.launch {
+            // 1) 세션에서 사용자 ID 가져오기
+            val userId = withContext(Dispatchers.IO) {
+                // 이미 값 있으면 그거 쓰고, 없으면 Supabase 세션에서 읽기
+                currentUserId ?: SupabaseManager.client.auth.currentSessionOrNull()
+                    ?.user?.id
+                    ?.toString()
+            }
+
+            if (userId == null) {
+                // 로그인 안 되어 있으면 알림은 기본적으로 OFF
+                isNotificationOn = false
+                updateNotificationButtonIcon()
+                return@launch
+            }
+
+            // 전역 변수도 최신 값으로 유지
+            currentUserId = userId
+
+            try {
+                // 2) place_notifications 에서 현재 장소 알림 상태 조회
+                val notifications = withContext(Dispatchers.IO) {
+                    SupabaseManager.client.postgrest["place_notifications"]
+                        .select {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kakao_place_id", currentPlaceId)
+                            }
+                        }
+                        .decodeList<NotificationDto>()
+                }
+
+                // 3) 하나라도 is_enabled(또는 isEnabled)가 true이면 ON
+                isNotificationOn = notifications.any { it.isEnabled }
+            } catch (e: Exception) {
+                Log.e("PlaceDetailActivity", "Failed to load notification status", e)
+                isNotificationOn = false
+            }
+
+            // 4) 버튼 아이콘 갱신
+            updateNotificationButtonIcon()
+        }
+    }
+
+
+
+    private fun toggleNotification() {
+        val userId = currentUserId ?: run {
+            Toast.makeText(
+                this,
+                getString(R.string.place_detail_login_required),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        lifecycleScope.launch {
+            try {
+                val newState = !isNotificationOn
+
+                withContext(Dispatchers.IO) {
+                    val table = SupabaseManager.client.postgrest["place_notifications"]
+
+                    if (newState) {
+                        // 🔔 ON: 먼저 row 존재 여부 확인
+                        val existing = table.select {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kakao_place_id", currentPlaceId)
+                            }
+                        }.decodeList<NotificationDto>()
+
+                        if (existing.isEmpty()) {
+                            // 없으면 새로 INSERT (true)
+                            table.insert(
+                                NotificationInsertDto(
+                                    userId = userId,
+                                    kakaoPlaceId = currentPlaceId,
+                                    isEnabled = true
+                                )
+                            )
+                        } else {
+                            // 있으면 UPDATE 로 true 로 변경
+                            table.update(
+                                {
+                                    set("is_enabled", true)
+                                }
+                            ) {
+                                filter {
+                                    eq("user_id", userId)
+                                    eq("kakao_place_id", currentPlaceId)
+                                }
+                            }
+                        }
+                    } else {
+                        // 🔕 OFF: is_enabled = false 로만 업데이트
+                        table.update(
+                            {
+                                set("is_enabled", false)
+                            }
+                        ) {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kakao_place_id", currentPlaceId)
+                            }
+                        }
+                    }
+                }
+
+                isNotificationOn = newState
+                updateNotificationButtonIcon()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to toggle notification", e)
+                Toast.makeText(
+                    this@PlaceDetailActivity,
+                    "알림 설정 변경에 실패했어요.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+
+
+
+
+
+
+
     private fun toggleFavorite() {
         if (isFavoriteLoading) return
         val userId = currentUserId
@@ -321,11 +515,20 @@ class PlaceDetailActivity : AppCompatActivity() {
                         }
                     }
                     isFavorite = false
+                    isNotificationOn = false
                     Toast.makeText(
                         this@PlaceDetailActivity,
                         getString(R.string.place_detail_favorite_removed),
                         Toast.LENGTH_SHORT
                     ).show()
+                    withContext(Dispatchers.IO) {
+                        SupabaseManager.client.postgrest["place_notifications"].delete {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kakao_place_id", currentPlaceId)
+                            }
+                        }
+                    }
                 } else {
                     // 즐겨찾기 추가 전에 profiles 테이블에 사용자 레코드가 있는지 확인하고 없으면 생성
                     withContext(Dispatchers.IO) {
@@ -338,7 +541,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                                     }
                                 }
                                 .decodeList<ProfileDto>()
-                            
+
                             // 없으면 생성
                             if (existingProfiles.isEmpty()) {
                                 SupabaseManager.client.postgrest["profiles"].insert(
@@ -354,7 +557,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                             // (이미 존재하는 경우 등)
                             Log.d(TAG, "Profile check/creation failed, continuing with favorite", e)
                         }
-                        
+
                         // 즐겨찾기 추가
                         SupabaseManager.client.postgrest["favorites"].insert(
                             FavoriteInsertDto(
@@ -364,13 +567,25 @@ class PlaceDetailActivity : AppCompatActivity() {
                         )
                     }
                     isFavorite = true
+                    isNotificationOn = true
                     Toast.makeText(
                         this@PlaceDetailActivity,
                         getString(R.string.place_detail_favorite_added),
                         Toast.LENGTH_SHORT
                     ).show()
+                    // 알림 테이블에도 ON 저장
+                    withContext(Dispatchers.IO) {
+                        SupabaseManager.client.postgrest["place_notifications"].upsert(
+                            NotificationInsertDto(
+                                userId = userId,
+                                kakaoPlaceId = currentPlaceId,
+                                isEnabled = true
+                            )
+                        )
+                    }
                 }
                 updateFavoriteButtonIcon()
+                updateNotificationButtonIcon()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to toggle favorite", e)
                 Toast.makeText(
@@ -419,6 +634,20 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     @Serializable
+    data class NotificationDto(
+        @SerialName("user_id") val userId: String,
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("is_enabled") val isEnabled: Boolean
+    )
+
+    @Serializable
+    data class NotificationInsertDto(
+        @SerialName("user_id") val userId: String,
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("is_enabled") val isEnabled: Boolean = true
+    )
+
+    @Serializable
     private data class FavoriteDto(
         @SerialName("user_id") val userId: String,
         @SerialName("kakao_place_id") val kakaoPlaceId: String,
@@ -432,44 +661,20 @@ class PlaceDetailActivity : AppCompatActivity() {
         @SerialName("kakao_place_id") val kakaoPlaceId: String,
         @SerialName("alert_threshold_db") val alertThresholdDb: Double? = null
     )
-    
+
     @Serializable
     private data class ProfileDto(
         val id: String,
         val nickname: String? = null,
         @SerialName("avatar_url") val avatarUrl: String? = null
     )
-    
+
     @Serializable
     private data class ProfileInsertDto(
         val id: String,
         val nickname: String? = null,
         @SerialName("avatar_url") val avatarUrl: String? = null
     )
-
-    @Serializable
-    private data class ReviewDto(
-        val id: Long,
-        @SerialName("kakao_place_id") val kakaoPlaceId: String,
-        val rating: Int,
-        val text: String? = null,
-        val images: List<String>? = null,
-        @SerialName("noise_level_db") val noiseLevelDb: Double,
-        @SerialName("created_at") val createdAt: String,
-        @SerialName("user_id") val userId: String? = null
-    ) {
-        fun toUiModel(): ReviewUiModel {
-            val displayDate = createdAt.takeIf { it.length >= 10 }?.substring(0, 10).orEmpty()
-            return ReviewUiModel(
-                id = id.toInt(),
-                rating = rating,
-                text = text ?: "",
-                noiseLevelDb = noiseLevelDb,
-                createdDate = displayDate,
-                amenities = emptyList() // DB에 amenities 필드가 없으므로 빈 리스트
-            )
-        }
-    }
 
     companion object {
         private const val TAG = "PlaceDetailActivity"

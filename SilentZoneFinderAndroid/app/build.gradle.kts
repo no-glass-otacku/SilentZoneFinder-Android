@@ -93,6 +93,7 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:auth-kt")
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
     implementation("io.github.jan-tennert.supabase:storage-kt")
+    implementation("io.github.jan-tennert.supabase:realtime-kt")
     
     // Ktor Android 엔진 (Supabase가 내부적으로 사용)
     implementation(platform("io.ktor:ktor-bom:3.0.0"))
