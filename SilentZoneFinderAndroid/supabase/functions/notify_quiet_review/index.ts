@@ -11,7 +11,7 @@ type QuietReviewPayload = {
 };
 
 // ★ 여기 FCM 서버키를 직접 넣는다 (Android key 값 그대로)
-const FCM_SERVER_KEY = "***REMOVED***CHuQ6Y2vp3Z8YRHDqs-zBntGCTo3LJ6Bg";
+const FCM_SERVER_KEY = Deno.env.get("FCM_SERVER_KEY")!;
 const FCM_ENDPOINT = "https://fcm.googleapis.com/fcm/send";
 
 if (!FCM_SERVER_KEY) {
