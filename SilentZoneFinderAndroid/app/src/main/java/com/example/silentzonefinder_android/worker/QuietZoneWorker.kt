@@ -2,7 +2,13 @@ package com.example.silentzonefinder_android.worker
 
 import android.content.Context
 import android.util.Log
+import android.content.SharedPreferences
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.example.silentzonefinder_android.SupabaseManager
 import com.example.silentzonefinder_android.utils.NotificationHelper
@@ -15,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.util.concurrent.TimeUnit
 
 class QuietZoneWorker(
     context: Context,
@@ -24,7 +31,29 @@ class QuietZoneWorker(
     companion object {
         private const val TAG = "QuietZoneWorker"
         private const val QUIET_THRESHOLD_DB = 60.0 // 조용한 장소 기준 (60 dB 이하)
-        private const val SEARCH_RADIUS_M = 1000.0 // 1km 반경
+        private const val WORK_NAME = "quiet_zone_worker"
+        private const val WORK_INTERVAL_MINUTES = 1L
+
+        fun schedule(context: Context) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val request = OneTimeWorkRequestBuilder<QuietZoneWorker>()
+                .setConstraints(constraints)
+                .setInitialDelay(WORK_INTERVAL_MINUTES, TimeUnit.MINUTES)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                WORK_NAME,
+                ExistingWorkPolicy.REPLACE,
+                request
+            )
+        }
+
+        fun cancel(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+        }
     }
 
     @Serializable
@@ -52,6 +81,11 @@ class QuietZoneWorker(
 
     override suspend fun doWork(): Result {
         return try {
+            if (!isNotificationEnabled()) {
+                Log.d(TAG, "Notification preference off, skipping work")
+                return Result.success()
+            }
+
             // 알림 권한 확인
             if (!PermissionHelper.hasNotificationPermission(applicationContext)) {
                 Log.d(TAG, "Notification permission not granted, skipping work")
@@ -153,7 +187,7 @@ class QuietZoneWorker(
 
                     // 임계값 초과 알림
                     val threshold = favorite.alertThresholdDb ?: continue
-                    if (avgNoise > threshold) {
+                    if (avgNoise <= threshold) {
                         NotificationHelper.showThresholdAlertNotification(
                             applicationContext,
                             place.name ?: "알 수 없는 장소",
@@ -169,11 +203,20 @@ class QuietZoneWorker(
                 }
             }
 
+            if (isNotificationEnabled()) {
+                schedule(applicationContext)
+            }
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Worker failed", e)
             Result.retry()
         }
+    }
+
+    private fun isNotificationEnabled(): Boolean {
+        val prefs: SharedPreferences =
+            applicationContext.getSharedPreferences("notification_prefs", Context.MODE_PRIVATE)
+        return prefs.getBoolean("quiet_zone_notifications_enabled", false)
     }
 }
 

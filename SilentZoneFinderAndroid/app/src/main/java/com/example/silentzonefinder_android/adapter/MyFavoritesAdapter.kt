@@ -127,7 +127,7 @@ class MyFavoritesAdapter(
             else -> R.color.filter_indicator_all
         }
         val color = ContextCompat.getColor(context, colorResId)
-        val background = (textView.background as? GradientDrawable)?.mutate()
+        val background = ((textView.background as? GradientDrawable)?.mutate()) as? GradientDrawable
         background?.setStroke(dpToPx(context, 2), color)
         background?.let { textView.background = it }
         textView.setTextColor(color)

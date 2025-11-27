@@ -95,11 +95,12 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:storage-kt")
     implementation("io.github.jan-tennert.supabase:realtime-kt")
     
-    // Ktor Android 엔진 (Supabase가 내부적으로 사용)
+    // Ktor 엔진/플러그인 (Supabase + Kakao API)
     implementation(platform("io.ktor:ktor-bom:3.0.0"))
-    implementation("io.ktor:ktor-client-android")
+    implementation("io.ktor:ktor-client-okhttp")
     implementation("io.ktor:ktor-client-core")
     implementation("io.ktor:ktor-client-content-negotiation")
+    implementation("io.ktor:ktor-client-websockets")
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     
     // Coroutines for lifecycleScope

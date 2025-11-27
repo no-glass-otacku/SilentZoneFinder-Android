@@ -95,11 +95,23 @@ class PlaceDetailActivity : AppCompatActivity() {
         }
 
         notificationButton.setOnClickListener {
-            toggleNotification()
-        }
-        notificationButton.setOnLongClickListener {
-            openNoiseThresholdSettings()
-            true
+            val wasOn = isNotificationOn
+            toggleNotification { isNowOn ->
+                if (isNowOn && !wasOn) {
+                    Toast.makeText(
+                        this@PlaceDetailActivity,
+                        getString(R.string.notification_enabled_message),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    openNoiseThresholdSettings()
+                } else if (!isNowOn && wasOn) {
+                    Toast.makeText(
+                        this@PlaceDetailActivity,
+                        getString(R.string.notification_disabled_message),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
         }
     }
 
@@ -406,13 +418,14 @@ class PlaceDetailActivity : AppCompatActivity() {
 
 
 
-    private fun toggleNotification() {
+    private fun toggleNotification(onComplete: ((Boolean) -> Unit)? = null) {
         val userId = currentUserId ?: run {
             Toast.makeText(
                 this,
                 getString(R.string.place_detail_login_required),
                 Toast.LENGTH_LONG
             ).show()
+            onComplete?.invoke(isNotificationOn)
             return
         }
 
@@ -471,6 +484,7 @@ class PlaceDetailActivity : AppCompatActivity() {
 
                 isNotificationOn = newState
                 updateNotificationButtonIcon()
+                onComplete?.invoke(newState)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to toggle notification", e)
@@ -479,6 +493,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                     "알림 설정 변경에 실패했어요.",
                     Toast.LENGTH_SHORT
                 ).show()
+                onComplete?.invoke(isNotificationOn)
             }
         }
     }
