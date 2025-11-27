@@ -95,11 +95,12 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:storage-kt")
     implementation("io.github.jan-tennert.supabase:realtime-kt")
     
-    // Ktor Android 엔진 (Supabase가 내부적으로 사용)
+    // Ktor 엔진/플러그인 (Supabase + Kakao API)
     implementation(platform("io.ktor:ktor-bom:3.0.0"))
-    implementation("io.ktor:ktor-client-android")
+    implementation("io.ktor:ktor-client-okhttp")
     implementation("io.ktor:ktor-client-core")
     implementation("io.ktor:ktor-client-content-negotiation")
+    implementation("io.ktor:ktor-client-websockets")
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     
     // Coroutines for lifecycleScope
@@ -110,6 +111,12 @@ dependencies {
     
     // Google Play Services Location
     implementation("com.google.android.gms:play-services-location:21.0.1")
+    
+    // WorkManager for background tasks
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    
+    // Gson for JSON serialization
+    implementation("com.google.code.gson:gson:2.10.1")
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
