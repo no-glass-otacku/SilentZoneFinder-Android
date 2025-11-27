@@ -77,6 +77,7 @@ class ProfileActivity : AppCompatActivity() {
         binding = ActivityProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        binding.bottomNavigation.selectedItemId = R.id.navigation_profile
         initImagePickLaunchers()
         setupBottomNavigation()
         setupClickListeners()
@@ -84,10 +85,14 @@ class ProfileActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        setupBottomNavigation()
         binding.bottomNavigation.selectedItemId = R.id.navigation_profile
         overridePendingTransition(0, 0)
         checkLoginStatus()
         loadProfileImageFromSupabase()
+
+        // 필요하면 애니메이션 제거도 여기서
+        // overridePendingTransition(0, 0)
     }
 
     private fun showLoginLayout() {
@@ -101,7 +106,7 @@ class ProfileActivity : AppCompatActivity() {
         binding.textUserName.text = name
         binding.textUserEmail.text = email
         binding.textReviewCount.text = "12"
-        binding.textOptimalCount.text = "8"
+
     }
 
     private fun checkLoginStatus() {
@@ -244,6 +249,11 @@ class ProfileActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
+        rowContactSupport.setOnClickListener {
+            val intent = Intent(this@ProfileActivity, ContactSupportActivity::class.java)
+            startActivity(intent)
+        }
+
         btnChangeAvatar.setOnClickListener {
             showImageSourceDialog()
         }
@@ -374,12 +384,25 @@ class ProfileActivity : AppCompatActivity() {
     }
 
     private fun setupBottomNavigation() {
+
         binding.bottomNavigation.setOnItemSelectedListener { item ->
+
             val targetActivity = when (item.itemId) {
+
+                // Map 화면
                 R.id.navigation_map -> MainActivity::class.java
+
+                // My Reviews 화면
                 R.id.navigation_my_reviews -> MyReviewsActivity::class.java
+
+                // My Favorites 화면
                 R.id.navigation_my_favorite -> MyFavoritesActivity::class.java
-                R.id.navigation_profile -> ProfileActivity::class.java
+
+                // Profile 화면
+                R.id.navigation_profile -> {
+                    return@setOnItemSelectedListener true
+                }
+
                 else -> return@setOnItemSelectedListener false
             }
 
@@ -387,11 +410,13 @@ class ProfileActivity : AppCompatActivity() {
                 return@setOnItemSelectedListener true
             }
 
-            val intent = Intent(this, targetActivity)
-            intent.addFlags(
-                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-            )
+            val intent = Intent(this, targetActivity).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+
             startActivity(intent)
             overridePendingTransition(0, 0)
             true
