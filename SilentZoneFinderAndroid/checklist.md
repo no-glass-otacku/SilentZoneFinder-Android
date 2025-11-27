@@ -15,16 +15,19 @@
   - [x] 소음 수준 분류 (Library Quiet, Quiet Conversation, Lively Chatter, High Traffic)
   - [x] 리뷰 작성 UI (별점, 텍스트, 편의시설 태그)
   - [x] 마이크 권한 요청 및 처리
+  - [x] 개발 모드: 디버그 빌드에서 데시벨 직접 입력 기능 추가
 
 - [x] **NewReviewActivity에서 Supabase로 리뷰 저장 구현**
   - [x] `setupSubmitButton()`에서 Supabase insert 로직 추가
   - [x] 현재 로그인한 사용자 ID 가져오기 (Supabase Auth)
   - [x] PlaceDetailActivity에서 전달받은 `kakao_place_id` 사용
-  - [x] ⚠️ 리뷰 저장 전 `places` 테이블 확인: 해당 `kakao_place_id`가 없으면 먼저 생성 (upsert)
+  - [x] 리뷰 저장 전 `places` 테이블 확인: 해당 `kakao_place_id`가 없으면 먼저 생성 (upsert)
     - [x] 장소 정보 (name, address, lat, lng)를 `places` 테이블에 저장
+    - [x] PlaceInsertDto 데이터 클래스 사용 (직렬화 오류 해결)
+    - [x] PlaceDto로 존재 확인 (Map<String, Any> 대신)
   - [x] 측정된 dB 값 (`finalMeasuredDb`) 저장
   - [x] 별점, 리뷰 텍스트 저장
-  - [x] ⚠️ `amenities` 필드는 DB에 없으므로 제외 (현재는 저장하지 않음)
+  - [x] `amenities` 필드는 DB에 없으므로 제외 (저장하지 않음)
   - [x] `images` 필드는 jsonb 타입으로 저장 (현재는 null로 저장)
   - [x] 저장 성공 시 PlaceDetailActivity로 돌아가서 리뷰 목록 갱신 (ActivityResultLauncher 사용)
   - [x] 저장 실패 시 에러 처리 및 Toast 메시지
@@ -33,7 +36,7 @@
   - [x] ReviewDto와 Supabase 스키마 일치 확인 (PlaceDetailActivity에서 사용 중)
   - [x] 필수 필드: `id`, `kakao_place_id`, `rating`, `text`, `noise_level_db`, `user_id`, `created_at`
   - [x] 선택 필드: `images` (jsonb 타입)
-  - [x] ⚠️ **주의**: `amenities` 필드가 데이터베이스에 없음 - 리뷰 저장 시 제외 처리 완료 ✅
+  - [x] `amenities` 필드가 데이터베이스에 없음 - 리뷰 저장 시 제외 처리 완료 ✅
 
 - [x] **리뷰 작성 시 Intent로 장소 정보 전달**
   - [x] PlaceDetailActivity에서 NewReviewActivity 호출 시 `kakao_place_id` 전달
@@ -56,25 +59,23 @@
   - [x] 필터 변경 시 지도 갱신 (NoiseLevel별 재렌더링)
   - [x] 현재 선택된 필터 표시 (AutoCompleteTextView 텍스트 반영)
 
-- [ ] **지도 페이지 UI 요소 구현** (Figma 디자인 반영) - **사용자 요청으로 원래대로 복원**
-  - [ ] "서울 지역 조용한 장소" 헤더 텍스트 표시 (원래대로 복원됨)
-  - [ ] "Kakao Maps integration ready" 서브텍스트 표시 (원래대로 복원됨)
-  - [ ] "Silent Zone" 앱 타이틀 헤딩 (유지)
-  - [ ] Noise Levels 섹션 UI (원래대로 복원됨)
+- [x] **지도 페이지 UI 요소 구현**
   - [x] 각 장소별 dB 값 표시 (마커에 표시됨)
   - [x] 검색 입력 필드 구현 (키워드 검색 기능 포함)
+  - [x] 필터 드롭다운 구현
+  - [x] 카테고리 칩 그룹 (Restaurants, Cafes, Bars)
 
-- [ ] **지도 줌/이동 시 주변 리뷰 데이터 자동 로드**
+- [x] **지도 줌/이동 시 주변 리뷰 데이터 자동 로드**
   - [x] 카메라 이동 이벤트 리스너 추가
-  - [ ] 현재 화면 영역 내 장소들의 리뷰 조회
-  - [x] 성능 최적화 (디바운싱 구현, 캐싱은 추후)
+  - [x] 뷰포트 기반 마커 필터링 (현재 화면 영역 내 장소만 표시)
+  - [x] 성능 최적화 (디바운싱 구현, 줌 레벨별 반경 조정)
 
 #### 3. 내 리뷰 관리
 - [x] **MyReviewsActivity 기본 기능 구현**
   - [x] 리뷰 목록 표시 (RecyclerView)
   - [x] 필터링 기능 (All Reviews, Library Quiet, Quiet Conversation, Lively Chatter, High Traffic)
   - [x] 정렬 기능 (날짜, 평점 등)
-  - [x] 리뷰 항목 UI (장소명, dB, 상태 배지, 평점, 날짜, 리뷰 텍스트, 편의시설 태그)
+  - [x] 리뷰 항목 UI (장소명, dB, 상태 배지, 평점, 날짜, 리뷰 텍스트)
   - [x] `loadDummyData()` 제거 → Supabase 실데이터 연동
   - [x] 현재 로그인한 사용자의 리뷰만 조회 (`auth.currentSessionOrNull`)
   - [x] Supabase `reviews` + `places` 조합으로 placeName 로드 (user_id 기준 필터)
@@ -83,7 +84,7 @@
 
 - [x] **리뷰 수정 기능**
   - [x] 리뷰 항목 클릭 시 수정 화면으로 이동 (NewReviewActivity 재사용)
-  - [x] 기존 리뷰 데이터 로드 (별점, 텍스트, dB) *(편의시설은 DB 미지원으로 제외)*
+  - [x] 기존 리뷰 데이터 로드 (별점, 텍스트, dB)
   - [x] 수정 모드에서 소음(dB) 수정 불가 처리
   - [x] Supabase UPDATE 쿼리 구현
   - [x] 수정 후 목록 갱신
@@ -100,15 +101,16 @@
 
 #### 4. 즐겨찾기 기능
 - [x] **Supabase favorites 테이블 확인**
-  - [x] 테이블 스키마 확인: `user_id` (uuid, PK), `kaka_place_id` (text, PK) - 복합 기본키
-  - [x] ⚠️ 컬럼명 확인: 실제 스키마는 `kaka_place_id`로 정의됨 (Supabase 이미지 참고)
-  - [ ] RLS (Row Level Security) 정책 설정
+  - [x] 테이블 스키마 확인: `user_id` (uuid, PK), `kakao_place_id` (text, PK) - 복합 기본키
+  - [x] 추가 필드: `alert_threshold_db` (numeric, nullable), `created_at` (timestamptz)
+  - [x] RLS (Row Level Security) 정책 설정 (supabase_rls_policies.sql 참고)
 
 - [x] **PlaceDetailActivity에 즐겨찾기 버튼 추가**
   - [x] 하트 아이콘 버튼
   - [x] 현재 장소가 즐겨찾기인지 확인
   - [x] 추가/제거 토글 기능 (Supabase favorites 연동)
   - [x] UI 상태 업데이트 (채워진/빈 하트)
+  - [x] profiles 테이블 자동 생성 (즐겨찾기 추가 시)
 
 - [x] **MyFavoritesActivity 구현**
   - [x] 즐겨찾기한 장소 목록 표시
@@ -140,9 +142,8 @@
   - [x] 주소 표시
   - [x] 현재 평균 dB 값 표시
   - [x] 소음 레벨 배지 표시 (Optimal, Good, Normal, Loud) - 색상별 스타일
-  - [ ] 소음 레벨 설명 텍스트 (예: "Quiet conversation level, suitable for work")
   - [x] 뒤로가기 버튼
-  - [ ] 즐겨찾기 버튼 (하트 아이콘)
+  - [x] 즐겨찾기 버튼 (하트 아이콘)
 
 - [x] **리뷰 목록 표시**
   - [x] Supabase에서 리뷰 조회
@@ -151,11 +152,12 @@
   - [x] 리뷰 개수 표시
   - [x] 빈 리뷰 목록 처리
 
-- [ ] **Noise Trend Today 그래프 구현**
-  - [ ] 시간대별 소음 수준 그래프/차트 표시
-  - [ ] 시간 라벨 (9:00, 10:00, 11:00, 12:00, 13:00, 14:00 등)
-  - [ ] 해당 장소의 시간대별 평균 dB 데이터 조회
-  - [ ] 그래프 시각화 (라인 차트 또는 바 차트)
+- [x] **Noise Trend Today 그래프 구현**
+  - [x] 시간대별 소음 수준 그래프/차트 표시 (NoiseTrendChartView 구현)
+  - [x] 최근 리뷰 데이터 기반 그래프 표시 (최근 12개 리뷰)
+  - [x] 해당 장소의 리뷰 데이터 조회 및 차트 업데이트
+  - [x] 그래프 시각화 (라인 차트 구현)
+  - [x] 빈 데이터 처리 (리뷰가 2개 미만일 때)
 
 #### 7. 리뷰 이미지 업로드
 - [ ] **이미지 선택 기능**
@@ -199,22 +201,22 @@
   - [ ] 클릭 시 PlaceDetailActivity로 이동
 
 #### 9. 알림 추천 시스템
-- [ ] **알림 권한 요청**
-  - [ ] Android 13+ POST_NOTIFICATIONS 권한
+- [x] **알림 권한 요청**
+  - [x] Android 13+ POST_NOTIFICATIONS 권한 (PermissionHelper, ProfileActivity)
 
-- [ ] **조용한 장소 추천 알림**
-  - [ ] 사용자 위치 기반 주변 조용한 장소 탐지
-  - [ ] 백그라운드 작업 (WorkManager)
-  - [ ] 알림 발송 로직
+- [x] **조용한 장소 추천 알림**
+  - [x] 사용자 위치 기반 주변 조용한 장소 탐지 (QuietZoneWorker)
+  - [x] 백그라운드 작업 (WorkManager, PeriodicWorkRequest)
+  - [x] 알림 발송 로직 (NotificationHelper)
 
-- [ ] **Noise Threshold Alert 구현** (Figma 디자인 반영)
-  - [ ] 소음 임계값 설정 기능
-  - [ ] 임계값 초과 시 알림 발송
-  - [ ] 알림 UI 디자인 구현
+- [x] **Noise Threshold Alert 구현** (Figma 디자인 반영)
+  - [x] 소음 임계값 설정 기능
+  - [x] 임계값 초과 시 알림 발송
+  - [x] 알림 UI 디자인 구현
 
-- [ ] **NotificationHistoryActivity 구현**
-  - [ ] 알림 히스토리 목록 표시
-  - [ ] 로컬 데이터베이스 또는 Supabase에 알림 기록 저장
+- [x] **NotificationHistoryActivity 구현**
+  - [x] 알림 히스토리 목록 표시 (NotificationHistoryAdapter)
+  - [x] 로컬 SharedPreferences에 알림 기록 저장 (NotificationHistoryManager)
 
 #### 10. 검색 기능 개선
 - [x] **검색 입력 필드 구현** (Figma: "Search for Place Name")
@@ -226,12 +228,12 @@
   - [x] 카테고리 검색 기능 (Restaurants, Cafes, Bars)
 
 - [ ] **검색 결과 캐싱**
-  - [ ] 최근 검색어 저장 (SharedPreferences)
+  - [x] 최근 검색어 저장 (SharedPreferences) ✅
   - [ ] 검색 결과 메모리 캐싱
 
-- [ ] **자동완성 기능**
-  - [ ] 검색어 입력 중 자동완성 제안
-  - [ ] 최근 검색어 표시
+- [x] **자동완성 기능** ✅
+  - [x] 검색어 입력 중 자동완성 제안
+  - [x] 최근 검색어 표시
 
 #### 11. 성능 최적화
 - [ ] **이미지 로딩 최적화**
@@ -321,6 +323,96 @@
 
 ---
 
+## 🔧 **부가 기능 (Optional Features)**
+
+### ✅ 바로 구현 가능한 기능 (API 키 불필요)
+
+#### Local Storages (Room DB, SharedPreferences 확장)
+- [ ] **Room Database 구현**
+  - [ ] Room 의존성 추가 (build.gradle.kts)
+  - [ ] Entity 정의 (Review, Place, Favorite 등)
+  - [ ] DAO (Data Access Object) 구현
+  - [ ] Database 클래스 생성
+  - [ ] Repository 패턴 적용
+
+- [ ] **오프라인 캐싱 기능**
+  - [ ] 리뷰 데이터 로컬 캐싱 (Room DB)
+  - [ ] 즐겨찾기 데이터 로컬 저장
+  - [ ] 장소 정보 캐싱
+  - [ ] 오프라인 모드에서 캐시된 데이터 표시
+  - [ ] 온라인 복귀 시 동기화 (SyncAdapter 또는 WorkManager)
+
+- [x] **검색 기록 저장** ✅
+  - [x] 최근 검색어 저장 (Room DB 또는 SharedPreferences) - SharedPreferences로 구현 완료
+- [x] 검색 기록 관리 화면 (검색/삭제)
+  - [x] 자동완성 기능 연동
+
+- [ ] **설정 정보 저장**
+  - [ ] 사용자 설정을 Room DB 또는 SharedPreferences에 저장
+  - [ ] 필터 설정 저장 (소음 수준 필터 기본값)
+  - [ ] 알림 설정 저장
+  - [ ] 앱 재시작 시 설정 복원
+
+#### Contracts (ActivityResultContract 개선)
+- [ ] **Custom ActivityResultContract 구현**
+  - [ ] PlaceDetailContract: 장소 상세 정보 반환
+  - [ ] ReviewResultContract: 리뷰 작성/수정 결과 반환
+  - [ ] ImagePickerContract: 이미지 선택 결과 반환
+  - [ ] LocationPickerContract: 위치 선택 결과 반환
+
+- [ ] **Contract 패턴 적용**
+  - [ ] 기존 ActivityResultLauncher를 Custom Contract로 교체
+  - [ ] 타입 안전성 향상
+  - [ ] 재사용 가능한 Contract 컴포넌트 생성
+  - [ ] Contract 테스트 작성
+
+- [ ] **Intent Contract 개선**
+  - [ ] 명확한 Intent Extra 키 정의 (companion object)
+  - [ ] Intent Builder 패턴 적용
+  - [ ] Intent 검증 로직 추가
+
+#### onDevice AI 기능 (API 키 불필요)
+- [ ] **음성 인식 기능 (Android Speech Recognition)**
+  - [ ] Android Speech Recognition API 사용 (무료, API 키 불필요)
+  - [ ] 리뷰 작성 시 음성 입력 기능 (NewReviewActivity)
+  - [ ] 음성을 텍스트로 변환하여 리뷰 텍스트 자동 입력
+  - [ ] 오프라인 음성 인식 지원 (선택사항, Google 앱 필요)
+
+- [ ] **OCR 기능 (ML Kit Text Recognition)**
+  - [ ] ML Kit Text Recognition 사용 (무료, API 키 불필요)
+  - [ ] Google Play Services 필요 (대부분의 기기에서 기본 제공)
+  - [ ] 리뷰 이미지에서 텍스트 추출
+  - [ ] 메뉴판, 가격표 등에서 정보 자동 추출
+  - [ ] 추출된 텍스트를 리뷰에 자동 입력
+
+---
+
+### 🔑 외부 리소스 필요 (API 키 등)
+
+#### OpenAPIs 연동
+- [ ] **날씨 API 연동** ⚠️ **API 키 필요**
+  - [ ] OpenWeatherMap API 키 발급 (https://openweathermap.org/api)
+    - 무료 플랜: 1,000 calls/day, 60 calls/min
+    - API 키를 `local.properties`에 추가 필요
+  - [ ] 또는 기상청 API 사용 (공공데이터포털 API 키 필요)
+  - [ ] 장소별 날씨 정보 표시 (PlaceDetailActivity)
+  - [ ] 날씨에 따른 소음 수준 예측 정보 제공
+  - [ ] 날씨 데이터 캐싱 (로컬 저장소 활용)
+
+#### AI 기반 추천 시스템 (선택사항)
+- [ ] **AI 기반 추천 시스템** ⚠️ **서버/API 필요**
+  - [ ] 사용자 선호도 기반 장소 추천
+    - 옵션 1: 서버 구축 필요 (백엔드 개발)
+    - 옵션 2: Firebase ML Kit 또는 TensorFlow Lite (모델 학습 필요)
+  - [ ] 소음 수준 예측 모델 (시간대별)
+    - 옵션 1: 서버에서 머신러닝 모델 실행
+    - 옵션 2: TensorFlow Lite로 온디바이스 실행 (모델 학습 필요)
+  - [ ] 개인화된 조용한 장소 추천
+    - 옵션 1: Supabase Edge Functions 활용
+    - 옵션 2: 외부 추천 API 사용 (API 키 필요)
+
+---
+
 ## 🧪 테스트 체크리스트
 
 ### 단위 테스트
@@ -346,8 +438,11 @@
 - [x] NewReviewActivity의 DUMMY_USER_ID, DUMMY_PLACE_ID 제거 ✅
 - [x] MyReviewsActivity의 더미 데이터 제거 (Supabase 연동 완료) ✅
 - [x] MainActivity의 샘플 데이터 제거 (Supabase 리뷰 기반 마커로 대체) ✅
-- [ ] 소음 측정 dB 계산 공식 검증 및 개선
-- [x] 필터 드롭다운 실제 필터링 로직 구현 (현재 UI만 구현됨)
+- [x] 필터 드롭다운 실제 필터링 로직 구현 ✅
+- [x] ReviewDto 자료형 통일 (id: Long, amenities 제거) ✅
+- [x] FavoriteDto 필드명 수정 (kakao_place_id로 통일) ✅
+- [x] PlaceInsertDto, PlaceDto 데이터 클래스 추가 (직렬화 오류 해결) ✅
+- [x] RLS 정책 설정 가이드 추가 (supabase_rls_policies.sql) ✅
 
 ### 코드 품질
 - [ ] 코드 리뷰 및 리팩토링
@@ -407,8 +502,10 @@ CREATE TABLE reviews (
 -- favorites 테이블 (즐겨찾기)
 CREATE TABLE favorites (
   user_id UUID NOT NULL REFERENCES auth.users(id),
-  kaka_place_id TEXT NOT NULL REFERENCES places(kakao_place_id), -- ⚠️ 컬럼명 확인 필요 (kakao_place_id일 수도)
-  PRIMARY KEY (user_id, kaka_place_id)
+  kakao_place_id TEXT NOT NULL REFERENCES places(kakao_place_id),
+  alert_threshold_db NUMERIC,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, kakao_place_id)
 );
 
 -- profiles 테이블 (사용자 프로필)
@@ -424,175 +521,57 @@ CREATE TABLE profiles (
 
 1. **`reviews.amenities` 필드 없음**: 
    - 데이터베이스에 `amenities` 컬럼이 존재하지 않음
-   - 리뷰 저장 시 편의시설 정보는 제외하거나 `text` 필드에 포함시켜야 함
-   - 또는 향후 마이그레이션으로 추가 필요
+   - 리뷰 저장 시 편의시설 정보는 제외됨
 
 2. **`reviews.images` 타입**: 
-   - `jsonb` 타입으로 저장됨 (TEXT[]가 아님)
-   - 저장 시 JSON 배열 형식으로 변환 필요: `["url1", "url2"]`
+   - `jsonb` 타입으로 저장됨
+   - 향후 이미지 업로드 기능 구현 시 JSON 배열 형식으로 저장: `["url1", "url2"]`
 
-3. **`favorites` 테이블 컬럼명**: 
-   - `kaka_place_id`로 되어있으나 `kakao_place_id`일 가능성 있음
-   - 실제 사용 시 컬럼명 확인 필요
+3. **`favorites` 테이블**: 
+   - 컬럼명: `kakao_place_id` (수정 완료)
+   - `alert_threshold_db`: 알림 임계값 (선택 필드)
+   - `created_at`: 생성 시간 (자동 설정)
 
-4. **`places` 테이블 존재**: 
+4. **`places` 테이블**: 
    - 장소 정보를 별도 테이블로 관리
-   - 리뷰 작성 시 해당 장소가 `places` 테이블에 없으면 먼저 생성 필요할 수 있음
-
-### 구현 순서 권장사항 (현재 상황 반영)
-
-#### ✅ **완료된 기능 (Phase 0)**
-- 소음 측정 기능 (AudioRecord, dB 계산, UI 업데이트)
-- 지도 마커 표시 (Supabase 리뷰 조회, 평균 dB 계산, 색상별 마커)
-- 검색 기능 (키워드 검색, 카테고리 검색)
-- 위치 기반 검색 (권한 요청, 현재 위치 획득, 반경 검색)
-- 장소 상세 페이지 리뷰 조회 (Supabase 연동, 평균 dB/평점 표시)
-- 프로필 로그인/회원가입 (Supabase Auth 연동)
-- 네비게이션 바 (모든 Activity에 구현)
-
----
-
-#### 🎯 **Phase 1 - 핵심 기능 완성 (최우선)**
-
-**1-1. 리뷰 저장 기능 구현** (P0-1) ✅ **완료**
-- [x] NewReviewActivity에서 Supabase로 리뷰 저장
-- [x] Intent로 `kakao_place_id`, `placeName`, `address`, `lat`, `lng` 전달
-- [x] DUMMY_USER_ID, DUMMY_PLACE_ID 제거
-- [x] ⚠️ `amenities` 필드는 DB에 없으므로 제외
-- [x] `images` 필드는 JSONB 형식으로 저장 (현재는 null)
-- [x] ⚠️ 리뷰 저장 전 `places` 테이블 확인: 해당 `kakao_place_id`가 없으면 먼저 생성 (upsert)
-- [x] 저장 후 PlaceDetailActivity 리뷰 목록 갱신 (ActivityResultLauncher 사용)
-- [x] PlaceDetailActivity에 FAB 버튼 추가 (리뷰 작성)
-- **완료**: 사용자가 실제로 리뷰를 작성하고 저장할 수 있음 ✅
-
-**1-2. MyReviewsActivity Supabase 연동** (P0-3) ✅ **완료**
-- [x] `loadDummyData()` 제거 및 실데이터 연동
-- [x] 로그인한 사용자(`user_id`) 기준으로 리뷰 조회
-- [x] `reviews` + `places` 데이터를 합쳐 장소명/소음 정보 표시
-- [x] 로딩/에러/빈 상태 UI (ProgressBar + CTA 버튼) 구현
-- [x] 필터/정렬 로직이 Supabase 데이터에도 적용되도록 리팩터
-- **완료**: 사용자가 자신이 작성한 리뷰를 확인할 수 있음 ✅
-
-**1-3. 필터 드롭다운 실제 필터링 로직** (P0-2) ✅ **완료**
-- [x] AutoComplete 드롭다운 선택 시 필터 상태 저장
-- [x] NoiseLevel(Optimal/Good/Normal/Loud)별 샘플 마커 재렌더링
-- [x] 필터 변경 시 지도 갱신 및 현재 선택값 표시
-- **완료**: 지도에서 소음 수준별로 장소를 필터링할 수 있음 ✅
-
----
-
-#### 🎯 **Phase 2 - 사용자 경험 향상**
-
-**2-1. 리뷰 수정/삭제 기능** (P0-3)
-- 리뷰 항목 클릭 시 수정 화면으로 이동
-- Supabase UPDATE/DELETE 쿼리 구현
-- **완료 시**: 사용자가 자신의 리뷰를 관리할 수 있음
-
-**2-2. 즐겨찾기 기능** (P1-4) ✅ **부분 완료**
-- [x] ⚠️ favorites 테이블 컬럼명 확인 (`kaka_place_id` vs `kakao_place_id`)
-- [x] PlaceDetailActivity에 즐겨찾기 버튼 추가
-- [x] MyFavoritesActivity 구현
-- [ ] MainActivity에서 즐겨찾기 마커 표시
-- **완료 시**: 사용자가 좋아하는 장소를 저장하고 관리할 수 있음
-
-**2-3. 샘플 데이터 제거 및 정리**
-- MainActivity의 `samplePlaces` 제거
-- 실제 데이터만 사용하도록 정리
-- **완료 시**: 앱이 실제 데이터만 사용하는 깔끔한 상태
-
----
-
-#### 🎯 **Phase 3 - 기능 완성도 향상**
-
-**3-1. Noise Trend Today 그래프** (P1-6)
-- 시간대별 소음 수준 그래프/차트 표시
-- 해당 장소의 시간대별 평균 dB 데이터 조회
-- **완료 시**: 장소의 시간대별 소음 패턴을 시각적으로 확인 가능
-
-**3-2. 리뷰 이미지 업로드** (P1-7)
-- 이미지 선택 기능 (갤러리, 카메라)
-- Supabase Storage에 이미지 업로드
-- 리뷰에서 이미지 표시
-- **완료 시**: 리뷰에 사진을 첨부할 수 있음
-
-**3-3. 지도 페이지 UI 개선** (P0-2)
-- Figma 디자인 반영 (헤더, 서브텍스트, Noise Levels 섹션)
-- **완료 시**: Figma 디자인과 일치하는 UI
-
----
-
-#### 🎯 **Phase 4 - 개선 및 최적화**
-
-**4-1. 지도 줌/이동 시 자동 로드** (P0-2)
-- 카메라 이동 이벤트 리스너 추가
-- 뷰포트 기반 데이터 로딩
-- 성능 최적화 (디바운싱, 캐싱)
-- **완료 시**: 지도 이동 시 주변 장소 자동 로드
-
-**4-2. 검색 기능 개선** (P2-10)
-- 검색 결과 캐싱
-- 자동완성 기능
-- 최근 검색어 표시
-- **완료 시**: 더 빠르고 편리한 검색 경험
-
-**4-3. 프로필 페이지 개선** (P2-8)
-- Optimal Spots 화면 구현
-- 실제 통계 데이터 표시 (리뷰 수, 최적 장소 수)
-- **완료 시**: 사용자 통계 정보 제공
-
----
-
-#### 🎯 **Phase 5 - 추가 기능 및 배포 준비**
-
-**5-1. 알림 추천 시스템** (P2-9)
-- 알림 권한 요청
-- 조용한 장소 추천 알림
-- Noise Threshold Alert
-- **완료 시**: 사용자에게 주변 조용한 장소 추천
-
-**5-2. 성능 최적화** (P2-11)
-- 이미지 로딩 최적화
-- 네트워크 요청 최적화
-- 지도 렌더링 최적화 (마커 클러스터링)
-- **완료 시**: 더 빠르고 부드러운 앱 사용 경험
-
-**5-3. 배포 준비** (P3)
-- ProGuard/R8 규칙 설정
-- 문서화 (README, API 문서)
-- 스토어 준비 (스크린샷, 앱 설명)
-- **완료 시**: 앱스토어 배포 가능 상태
+   - 리뷰 작성 시 자동으로 생성됨 (upsert)
 
 ---
 
 ### 📊 현재 진행 상황 요약
 
-- **Phase 0 (완료)**: 기본 인프라 및 핵심 UI ✅
-- **Phase 1-1 (완료)**: 리뷰 저장 기능 구현 ✅
-- **Phase 1-2 (완료)**: MyReviewsActivity Supabase 연동 ✅
-- **Phase 1-3 (완료)**: 필터 드롭다운 실제 필터링 로직 ✅
-- **Phase 2-1 (완료)**: 리뷰 수정/삭제 기능 ✅
-- **Phase 2-2 (부분 완료)**: 즐겨찾기 기능 (MyFavoritesActivity 구현 완료, 마커 표시 대기) ✅
-- **Phase 2-5 (완료)**: 현재 위치 마커 표시 ✅
-- **Phase 3-3 (완료)**: 지도 페이지 UI 개선 (Figma 디자인 반영) ✅
-- **Phase 2-5 (대기 중)**: 기능 확장 및 개선
+**✅ 완료된 주요 기능:**
+- 리뷰 작성/수정/삭제 (Supabase 연동)
+- 지도 마커 표시 (리뷰 데이터 기반)
+- 필터링 기능 (소음 수준별)
+- 즐겨찾기 기능 (추가/제거/목록)
+- 검색 기능 (키워드, 카테고리)
+- 검색 기록 저장 및 자동완성 기능 (SharedPreferences)
+- 현재 위치 기반 검색
+- 프로필 로그인/회원가입
+- 네비게이션 바 (모든 Activity)
+- 개발 모드 (데시벨 직접 입력)
+- Noise Trend Today 그래프 (최근 리뷰 기반)
+- 알림 권한 및 WorkManager (조용한 장소 추천 알림)
+- NotificationHistoryActivity (알림 히스토리)
+- Noise Threshold Alert (임계값 설정 및 초과 알림)
 
-### 💡 다음 작업 권장사항
-
-**즉시 시작할 작업**:
-1. **MainActivity에서 즐겨찾기 마커 표시** (P1-4)
-   - 즐겨찾기한 장소는 별도 마커 스타일 적용
-   - 완료 시: 지도에서 즐겨찾기 장소를 쉽게 식별 가능
-
-2. **지도 줌/이동 시 주변 리뷰 데이터 자동 로드** (P0-2)
-   - 현재 화면 영역 내 장소들의 리뷰 조회
-   - 완료 시: 지도 이동 시 주변 장소 자동 로드
-
-3. **Noise Trend Today 그래프** (P1-6)
-   - 시간대별 소음 수준 그래프/차트 표시
-   - 완료 시: 장소의 시간대별 소음 패턴을 시각적으로 확인 가능
+**🔄 진행 중/예정:**
+- MainActivity에서 즐겨찾기 마커 표시
+- 리뷰 이미지 업로드
+- Optimal Spots 화면 구현
 
 ---
 
-**마지막 업데이트**: 2024년 기준 (Figma 디자인 반영)
+**마지막 업데이트**: 2025-11-27
 **프로젝트**: SilentZoneFinder Android
 **Figma 디자인**: https://www.figma.com/design/F5LHvHsGsOpHQRcn1SabmC/silentZone
+
+---
+
+## 📚 관련 문서
+
+- `README.md` - 프로젝트 설정 및 시작 가이드
+- `SUPABASE_RLS_SETUP.md` - RLS 정책 설정 가이드
+- `supabase_rls_policies.sql` - RLS 정책 SQL 쿼리
+- `LOGCAT_FILTER_GUIDE.md` - Logcat 필터링 가이드
