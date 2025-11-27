@@ -1,33 +1,37 @@
 package com.example.silentzonefinder_android
 
+import android.Manifest
+import android.app.AlertDialog
 import android.content.Intent
+import android.content.SharedPreferences
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import coil.load
 import com.example.silentzonefinder_android.databinding.ActivityProfileBinding
+import com.example.silentzonefinder_android.utils.PermissionHelper
+import com.example.silentzonefinder_android.worker.QuietZoneWorker
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.exceptions.HttpRequestException
 import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.storage.storage
-import android.app.AlertDialog
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
-import coil.load
 import io.ktor.http.ContentType
 import kotlinx.coroutines.launch
 import java.util.regex.Pattern
-import android.net.Uri
 
 class ProfileActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityProfileBinding
 
-    // Supabase 클라이언트 (에러 나면 null 로 처리)
     private val supabase: SupabaseClient? by lazy {
         try {
             SupabaseManager.client
@@ -37,12 +41,27 @@ class ProfileActivity : AppCompatActivity() {
         }
     }
 
-    // 간단한 로그인 상태 저장용 (이메일만 저장)
     private val prefs by lazy {
         getSharedPreferences("auth_prefs", MODE_PRIVATE)
     }
 
+    private val notificationPrefs: SharedPreferences by lazy {
+        getSharedPreferences("notification_prefs", MODE_PRIVATE)
+    }
+
     private lateinit var pickImageLauncher: ActivityResultLauncher<String>
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            scheduleQuietZoneWorker()
+            Toast.makeText(this, "알림 권한이 허용되었습니다.", Toast.LENGTH_SHORT).show()
+        } else {
+            binding.switchQuietAlert.isChecked = false
+            Toast.makeText(this, "알림 권한이 필요합니다.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     companion object {
         private val EMAIL_PATTERN = Pattern.compile(
@@ -50,10 +69,8 @@ class ProfileActivity : AppCompatActivity() {
         )
         private const val MIN_PASSWORD_LENGTH = 6
         private const val PREF_KEY_EMAIL = "user_email"
-
         private const val PREF_KEY_PROFILE_IMAGE_URL = "profile_image_url"
     }
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,23 +78,16 @@ class ProfileActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.bottomNavigation.selectedItemId = R.id.navigation_profile
-
-        // 프로필 이미지용 런처 초기화
         initImagePickLaunchers()
-
+        setupBottomNavigation()
         setupClickListeners()
     }
 
     override fun onResume() {
         super.onResume()
-
-        // 하단 네비게이션 리스너 재등록
         setupBottomNavigation()
-
-        // 현재 탭을 Profile로 강제 지정 (파란색 아이콘)
         binding.bottomNavigation.selectedItemId = R.id.navigation_profile
-
-        // 기존 로직
+        overridePendingTransition(0, 0)
         checkLoginStatus()
         loadProfileImageFromSupabase()
 
@@ -85,11 +95,6 @@ class ProfileActivity : AppCompatActivity() {
         // overridePendingTransition(0, 0)
     }
 
-
-
-    // -----------------------------
-    // UI 상태 전환 (로그인 / 비로그인)
-    // -----------------------------
     private fun showLoginLayout() {
         binding.loginLayout.visibility = View.VISIBLE
         binding.loggedInLayout.visibility = View.GONE
@@ -98,16 +103,14 @@ class ProfileActivity : AppCompatActivity() {
     private fun showLoggedInLayout(name: String, email: String) {
         binding.loginLayout.visibility = View.GONE
         binding.loggedInLayout.visibility = View.VISIBLE
-
         binding.textUserName.text = name
         binding.textUserEmail.text = email
-
         binding.textReviewCount.text = "12"
 
     }
 
     private fun checkLoginStatus() {
-        val email = prefs.getString("user_email", null)
+        val email = prefs.getString(PREF_KEY_EMAIL, null)
         if (email.isNullOrEmpty()) {
             showLoginLayout()
         } else {
@@ -116,12 +119,7 @@ class ProfileActivity : AppCompatActivity() {
         }
     }
 
-    // -----------------------------
-    // 버튼 리스너
-    // -----------------------------
     private fun setupClickListeners() = with(binding) {
-
-        // 로그인 버튼
         btnLogin.setOnClickListener {
             val email = inputEmail.text.toString().trim()
             val password = inputPassword.text.toString()
@@ -143,7 +141,6 @@ class ProfileActivity : AppCompatActivity() {
                         this.email = email
                         this.password = password
                     }
-                    // 로그인 성공
                     saveLoggedInUser(email)
                     val name = email.substringBefore("@")
                     showLoggedInLayout(name, email)
@@ -171,7 +168,6 @@ class ProfileActivity : AppCompatActivity() {
             }
         }
 
-        // 회원가입 버튼
         btnSignUp.setOnClickListener {
             val email = inputEmail.text.toString().trim()
             val password = inputPassword.text.toString()
@@ -221,27 +217,47 @@ class ProfileActivity : AppCompatActivity() {
             }
         }
 
-        // 알림 스위치 (예시: 단순 토스트)
         switchQuietAlert.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
-                Toast.makeText(this@ProfileActivity, "조용한 장소 알림이 켜졌습니다.", Toast.LENGTH_SHORT).show()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    !PermissionHelper.hasNotificationPermission(this@ProfileActivity)
+                ) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    return@setOnCheckedChangeListener
+                }
+                scheduleQuietZoneWorker()
+                notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", true).apply()
+                Toast.makeText(this@ProfileActivity, "조용한 존 추천 알림이 켜졌습니다.", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this@ProfileActivity, "조용한 장소 알림이 꺼졌습니다.", Toast.LENGTH_SHORT).show()
+                cancelQuietZoneWorker()
+                notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", false).apply()
+                Toast.makeText(this@ProfileActivity, "조용한 존 추천 알림이 꺼졌습니다.", Toast.LENGTH_SHORT).show()
             }
         }
 
-        // 설정 화면 이동
+        val notificationsEnabled =
+            notificationPrefs.getBoolean("quiet_zone_notifications_enabled", false)
+        switchQuietAlert.isChecked = notificationsEnabled
+
+        rowNotificationHistory.setOnClickListener {
+            val intent = Intent(this@ProfileActivity, NotificationHistoryActivity::class.java)
+            startActivity(intent)
+        }
+
+        rowSettings.setOnClickListener {
+            val intent = Intent(this@ProfileActivity, SettingsActivity::class.java)
+            startActivity(intent)
+        }
+
         rowContactSupport.setOnClickListener {
             val intent = Intent(this@ProfileActivity, ContactSupportActivity::class.java)
             startActivity(intent)
         }
 
-        // 프로필 사진 변경 버튼
         btnChangeAvatar.setOnClickListener {
             showImageSourceDialog()
         }
 
-        // 로그아웃
         textSignOut.setOnClickListener {
             performLogout()
         }
@@ -261,9 +277,6 @@ class ProfileActivity : AppCompatActivity() {
         }
     }
 
-    // -----------------------------
-    // 유효성 검사 + 로그인 정보 저장
-    // -----------------------------
     private fun isValidEmail(email: String): Boolean {
         if (email.isBlank()) {
             Toast.makeText(this, "이메일을 입력해주세요.", Toast.LENGTH_SHORT).show()
@@ -280,7 +293,7 @@ class ProfileActivity : AppCompatActivity() {
         if (password.length < MIN_PASSWORD_LENGTH) {
             Toast.makeText(
                 this,
-                "비밀번호는 최소 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.",
+                "비밀번호는 최소 ${'$'}MIN_PASSWORD_LENGTH자 이상이어야 합니다.",
                 Toast.LENGTH_SHORT
             ).show()
             return false
@@ -289,31 +302,23 @@ class ProfileActivity : AppCompatActivity() {
     }
 
     private fun saveLoggedInUser(email: String) {
-        prefs.edit().putString("user_email", email).apply()
+        prefs.edit().putString(PREF_KEY_EMAIL, email).apply()
     }
 
     private fun clearLoggedInUser() {
         prefs.edit().clear().apply()
     }
 
-    // -----------------------------
-    // 프로필 이미지 선택 (카메라 / 갤러리)
-    // -----------------------------
     private fun initImagePickLaunchers() {
         pickImageLauncher = registerForActivityResult(
             ActivityResultContracts.GetContent()
         ) { uri ->
             if (uri != null) {
-                // 미리보기용: 바로 눈에 보이게
                 binding.imageAvatar.setImageURI(uri)
-
-                // 실제로 앱 재실행 후 사용할 것은 Supabase URL만
                 uploadProfileImageToSupabase(uri)
             }
         }
     }
-
-
 
     private fun showImageSourceDialog() {
         val items = arrayOf("갤러리에서 선택")
@@ -333,8 +338,6 @@ class ProfileActivity : AppCompatActivity() {
         binding.imageAvatar.load(url)
     }
 
-
-
     private fun uploadProfileImageToSupabase(uri: Uri) {
         val client = supabase ?: return
 
@@ -346,27 +349,24 @@ class ProfileActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                val fileName = "avatar_${System.currentTimeMillis()}.jpg"
+                val fileName = "avatar_${'$'}{System.currentTimeMillis()}.jpg"
 
                 client.storage.from("avatars").upload(
                     path = fileName,
                     data = bytes
                 ) {
                     upsert = true
-                    contentType = ContentType.Image.JPEG   // ← String 말고 이 타입
+                    contentType = ContentType.Image.JPEG
                 }
 
                 val publicUrl = client.storage.from("avatars").publicUrl(fileName)
-                Log.d("ProfileActivity", "Avatar uploaded. URL = $publicUrl")
+                Log.d("ProfileActivity", "Avatar uploaded. URL = ${'$'}publicUrl")
 
-                // 이제부터는 Supabase URL만 저장
                 prefs.edit()
                     .putString(PREF_KEY_PROFILE_IMAGE_URL, publicUrl)
                     .apply()
 
-                // 업로드 직후에도 같은 URL로 다시 로딩
                 binding.imageAvatar.load(publicUrl)
-
             } catch (e: Exception) {
                 Log.e("ProfileActivity", "uploadProfileImageToSupabase error", e)
                 Toast.makeText(
@@ -378,21 +378,11 @@ class ProfileActivity : AppCompatActivity() {
         }
     }
 
-
-
-    private fun uriToBytes(uri: android.net.Uri): ByteArray {
+    private fun uriToBytes(uri: Uri): ByteArray {
         val inputStream = contentResolver.openInputStream(uri)
         return inputStream?.readBytes() ?: ByteArray(0)
     }
 
-
-
-
-
-
-    // -----------------------------
-    // 하단 네비게이션
-    // -----------------------------
     private fun setupBottomNavigation() {
 
         binding.bottomNavigation.setOnItemSelectedListener { item ->
@@ -416,7 +406,6 @@ class ProfileActivity : AppCompatActivity() {
                 else -> return@setOnItemSelectedListener false
             }
 
-            // 동일 화면이면 다시 실행하지 않음
             if (targetActivity == this::class.java) {
                 return@setOnItemSelectedListener true
             }
@@ -432,5 +421,13 @@ class ProfileActivity : AppCompatActivity() {
             overridePendingTransition(0, 0)
             true
         }
+    }
+
+    private fun scheduleQuietZoneWorker() {
+        QuietZoneWorker.schedule(this)
+    }
+
+    private fun cancelQuietZoneWorker() {
+        QuietZoneWorker.cancel(this)
     }
 }

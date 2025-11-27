@@ -10,7 +10,10 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.silentzonefinder_android.SupabaseManager
 import com.example.silentzonefinder_android.adapter.MyFavoritesAdapter
 import com.example.silentzonefinder_android.data.FavoritePlace
+import com.example.silentzonefinder_android.data.ReviewDto
 import com.example.silentzonefinder_android.databinding.ActivityMyFavoritesBinding
+import com.example.silentzonefinder_android.notifications.NotificationPlacesRepository
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -20,9 +23,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
-import com.example.silentzonefinder_android.notifications.NotificationPlacesRepository
-import com.example.silentzonefinder_android.data.ReviewDto
-
 class MyFavoritesActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMyFavoritesBinding
@@ -57,6 +57,9 @@ class MyFavoritesActivity : AppCompatActivity() {
 
         // 애니메이션 제거
         overridePendingTransition(0, 0)
+
+        // 라벨 가시성 명시적으로 설정
+        binding.bottomNavigation.labelVisibilityMode = BottomNavigationView.LABEL_VISIBILITY_LABELED
 
         // 즐겨찾기 목록 로드
         loadMyFavorites()
@@ -337,7 +340,6 @@ class MyFavoritesActivity : AppCompatActivity() {
                     SupabaseManager.client.postgrest["favorites"].delete {
                         filter {
                             eq("user_id", userId)
-                            // 오타 수정: kaka_place_id -> kakao_place_id
                             eq("kakao_place_id", favorite.kakaoPlaceId)
                         }
                     }
@@ -466,7 +468,9 @@ class MyFavoritesActivity : AppCompatActivity() {
     @Serializable
     private data class FavoriteDto(
         @SerialName("user_id") val userId: String,
-        @SerialName("kakao_place_id") val kakaoPlaceId: String
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("alert_threshold_db") val alertThresholdDb: Double? = null,
+        @SerialName("created_at") val createdAt: String? = null
     )
 
     @Serializable
@@ -489,6 +493,5 @@ class MyFavoritesActivity : AppCompatActivity() {
         val name: String? = null,
         val address: String? = null
     )
-
 
 }

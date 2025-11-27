@@ -1,9 +1,11 @@
 package com.example.silentzonefinder_android.notifications
 
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.silentzonefinder_android.PlaceDetailActivity
 import com.example.silentzonefinder_android.R
@@ -11,7 +13,26 @@ import com.example.silentzonefinder_android.data.ReviewDto
 
 object NotificationHelper {
 
-    private const val CHANNEL_ID = "review_notifications"
+    const val CHANNEL_ID = "review_notifications"
+    private const val CHANNEL_NAME = "조용한 리뷰 알림"
+    private const val CHANNEL_DESCRIPTION = "즐겨찾기 장소에 새로운 조용한 리뷰가 등록되면 알려드려요."
+
+    fun createNotificationChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            CHANNEL_NAME,
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = CHANNEL_DESCRIPTION
+        }
+
+        notificationManager.createNotificationChannel(channel)
+    }
 
     fun showNewReviewNotification(
         context: Context,

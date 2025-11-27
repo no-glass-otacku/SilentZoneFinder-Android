@@ -10,6 +10,21 @@
     <string name="filter_option_loud">Loud Only</string>
     <string name="search_hint">Search for place name</string>
     <string name="search_button_text">Search</string>
+    <string name="search_history_manage_button">기록 관리</string>
+    <string name="search_history_button_description">검색 기록 관리</string>
+    <string name="search_history_title">검색 기록</string>
+    <string name="search_history_subtitle">최근에 검색한 키워드를 한눈에 관리해보세요.</string>
+    <string name="search_history_empty">최근 검색 기록이 없습니다.</string>
+    <string name="search_history_clear_all">전체 삭제</string>
+    <string name="search_history_clear_all_dialog_title">검색 기록 삭제</string>
+    <string name="search_history_clear_all_dialog_message">모든 검색 기록이 삭제돼요. 계속할까요?</string>
+    <string name="search_history_clear_all_dialog_confirm">삭제</string>
+    <string name="search_history_clear_all_dialog_cancel">취소</string>
+    <string name="search_history_item_deleted">검색 기록을 삭제했어요.</string>
+    <string name="search_history_all_deleted">검색 기록을 모두 삭제했어요.</string>
+    <string name="search_reset_button_description">검색 초기화</string>
+    <string name="notification_enabled_message">알림이 설정됐습니다.</string>
+    <string name="notification_disabled_message">알림이 꺼졌습니다.</string>
     <string name="category_restaurants">Restaurants</string>
     <string name="category_cafes">Cafes</string>
     <string name="category_bars">Bars</string>
@@ -112,4 +127,9 @@
     <string name="noise_level_good_range">Good (46-60 dB)</string>
     <string name="noise_level_normal_range">Normal (61-70 dB)</string>
     <string name="noise_level_loud_range">Loud (70+ dB)</string>
+    <string name="noise_threshold_title">Set Noise Alert Threshold</string>
+    <string name="noise_threshold_description">You\'ll receive a notification when the noise level exceeds your %1$d dB threshold.</string>
+    <string name="noise_threshold_save">Save Alert</string>
+    <string name="noise_threshold_info_title">About Noise Threshold Alerts</string>
+    <string name="noise_threshold_info_text">When you set a noise threshold, you\'ll receive notifications when the noise level at your favorited places exceeds this value. This helps you stay aware of noisy environments.</string>
 </resources>
