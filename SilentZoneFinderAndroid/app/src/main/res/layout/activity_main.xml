@@ -99,13 +99,16 @@
                 app:startIconDrawable="@drawable/ic_search"
                 app:startIconTint="@color/grey">
 
-                <com.google.android.material.textfield.TextInputEditText
+                <com.google.android.material.textfield.MaterialAutoCompleteTextView
                     android:id="@+id/searchEditText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:imeOptions="actionSearch"
                     android:inputType="text"
-                    android:maxLines="1" />
+                    android:maxLines="1"
+                    android:completionThreshold="1"
+                    android:dropDownHeight="wrap_content"
+                    android:dropDownVerticalOffset="4dp" />
 
             </com.google.android.material.textfield.TextInputLayout>
 

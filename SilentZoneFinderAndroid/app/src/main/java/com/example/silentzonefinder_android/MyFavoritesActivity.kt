@@ -7,10 +7,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.silentzonefinder_android.SupabaseManager
 import com.example.silentzonefinder_android.adapter.MyFavoritesAdapter
 import com.example.silentzonefinder_android.data.FavoritePlace
+import com.example.silentzonefinder_android.data.ReviewDto
 import com.example.silentzonefinder_android.databinding.ActivityMyFavoritesBinding
-import com.example.silentzonefinder_android.SupabaseManager
+import com.example.silentzonefinder_android.notifications.NotificationPlacesRepository
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.github.jan.supabase.auth.auth
@@ -21,11 +23,16 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
-
 class MyFavoritesActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMyFavoritesBinding
     private lateinit var favoritesAdapter: MyFavoritesAdapter
+
+    // 현재 로그인한 유저 id (알림 토글 시 사용)
+    private var currentUserId: String? = null
+
+    // 알림 ON인 kakao_place_id 목록 (Supabase 기준)
+    private var notificationPlaceIds: MutableSet<String> = mutableSetOf()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,6 +40,7 @@ class MyFavoritesActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupRecyclerView()
+
         binding.btnEmptyGoToMap.setOnClickListener {
             navigateToMap()
         }
@@ -61,14 +69,21 @@ class MyFavoritesActivity : AppCompatActivity() {
         favoritesAdapter = MyFavoritesAdapter(
             emptyList(),
             onPlaceClick = { favorite -> openPlaceDetail(favorite) },
-            onRemoveFavorite = { favorite -> confirmRemoveFavorite(favorite) }
+            onRemoveFavorite = { favorite -> confirmRemoveFavorite(favorite) },
+            onToggleNotification = { kakaoPlaceId, newState ->
+                handleToggleNotification(kakaoPlaceId, newState)
+            }
         )
+
         binding.recyclerViewFavorites.apply {
             layoutManager = LinearLayoutManager(this@MyFavoritesActivity)
             adapter = favoritesAdapter
         }
     }
 
+    /**
+     * 즐겨찾기 + 알림 상태 함께 로드
+     */
     private fun loadMyFavorites() {
         lifecycleScope.launch {
             showLoading(true)
@@ -92,6 +107,21 @@ class MyFavoritesActivity : AppCompatActivity() {
                 }
 
                 val userId = user.id.toString()
+                currentUserId = userId
+
+                // 0. 이 유저의 알림 ON 장소 목록 먼저 조회
+                notificationPlaceIds = withContext(Dispatchers.IO) {
+                    SupabaseManager.client.postgrest["place_notifications"]
+                        .select {
+                            filter {
+                                eq("user_id", userId)
+                                eq("is_enabled", true)
+                            }
+                        }
+                        .decodeList<NotificationDto>()
+                        .map { it.kakaoPlaceId }
+                        .toMutableSet()
+                }
 
                 // 1. 즐겨찾기 목록 조회
                 val favoriteDtos = withContext(Dispatchers.IO) {
@@ -106,6 +136,7 @@ class MyFavoritesActivity : AppCompatActivity() {
 
                 if (favoriteDtos.isEmpty()) {
                     favoritesAdapter.updateFavorites(emptyList())
+                    favoritesAdapter.updateNotificationPlaces(emptySet())
                     showEmptyState(
                         message = "아직 즐겨찾기한 장소가 없어요.\n장소 상세 페이지에서 즐겨찾기를 추가해보세요!",
                         showButton = true
@@ -164,6 +195,10 @@ class MyFavoritesActivity : AppCompatActivity() {
                 }
 
                 favoritesAdapter.updateFavorites(favoritePlaces)
+                favoritesAdapter.updateNotificationPlaces(notificationPlaceIds)
+
+                NotificationPlacesRepository.update(notificationPlaceIds)
+
                 showContentState()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -182,23 +217,94 @@ class MyFavoritesActivity : AppCompatActivity() {
         }
     }
 
-    private suspend fun fetchPlacesFor(placeIds: List<String>): Map<String, PlaceDto> {
-        if (placeIds.isEmpty()) return emptyMap()
-        return withContext(Dispatchers.IO) {
-            SupabaseManager.client.postgrest["places"]
-                .select()
-                .decodeList<PlaceDto>()
-                .filter { placeIds.contains(it.kakaoPlaceId) }
-                .associateBy { it.kakaoPlaceId }
+    /**
+     * 알림 ON/OFF 토글 → Supabase place_notifications 반영
+     */
+    private fun handleToggleNotification(
+        kakaoPlaceId: String,
+        newState: Boolean
+    ) {
+        val userId = currentUserId ?: return
+
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val table = SupabaseManager.client.postgrest["place_notifications"]
+
+                    if (newState) {
+                        val existing = table.select {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kakao_place_id", kakaoPlaceId)
+                            }
+                        }.decodeList<NotificationDto>()
+
+                        if (existing.isEmpty()) {
+                            table.insert(
+                                NotificationInsertDto(
+                                    userId = userId,
+                                    kakaoPlaceId = kakaoPlaceId,
+                                    isEnabled = true
+                                )
+                            )
+                        } else {
+                            table.update(
+                                {
+                                    set("is_enabled", true)
+                                }
+                            ) {
+                                filter {
+                                    eq("user_id", userId)
+                                    eq("kakao_place_id", kakaoPlaceId)
+                                }
+                            }
+                        }
+                    } else {
+                        table.update(
+                            {
+                                set("is_enabled", false)
+                            }
+                        ) {
+                            filter {
+                                eq("user_id", userId)
+                                eq("kakao_place_id", kakaoPlaceId)
+                            }
+                        }
+                    }
+                }
+
+                // 로컬 캐시 동기화
+                if (newState) {
+                    notificationPlaceIds.add(kakaoPlaceId)
+                } else {
+                    notificationPlaceIds.remove(kakaoPlaceId)
+                }
+                favoritesAdapter.updateNotificationPlaces(notificationPlaceIds)
+
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@MyFavoritesActivity,
+                    "알림 설정 변경에 실패했어요.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 
+
+
+
+
     private fun openPlaceDetail(favorite: FavoritePlace) {
-        val intent = Intent(this, PlaceDetailActivity::class.java).apply {
-            putExtra("kakao_place_id", favorite.kakaoPlaceId)
-            putExtra("place_name", favorite.placeName)
-            putExtra("address", favorite.address)
-        }
+        val intent = PlaceDetailActivity.createIntent(
+            context = this,
+            placeId = favorite.kakaoPlaceId,
+            placeName = favorite.placeName,
+            address = favorite.address,
+            category = null,      // 즐겨찾기에는 카테고리 정보가 없으니까 일단 null
+            lat = null,
+            lng = null
+        )
         startActivity(intent)
     }
 
@@ -255,13 +361,6 @@ class MyFavoritesActivity : AppCompatActivity() {
                 showLoading(false)
             }
         }
-    }
-
-    private fun getNoiseStatus(db: Double): String = when {
-        db <= 45.0 -> "Optimal"
-        db <= 55.0 -> "Good"
-        db <= 65.0 -> "Normal"
-        else -> "Loud"
     }
 
     private fun showLoading(show: Boolean) {
@@ -330,10 +429,41 @@ class MyFavoritesActivity : AppCompatActivity() {
 
             startActivity(intent)
             overridePendingTransition(0, 0)
-
             true
         }
     }
+
+    private fun getNoiseStatus(noiseDb: Double): String {
+        return when {
+            noiseDb in 30.0..45.0 -> "Optimal"
+            noiseDb in 46.0..55.0 -> "Good"
+            noiseDb in 56.0..65.0 -> "Normal"
+            noiseDb >= 66.0 -> "Loud"
+            else -> "Unknown"
+        }
+    }
+
+    private suspend fun fetchPlacesFor(placeIds: List<String>): Map<String, PlaceDto> {
+        if (placeIds.isEmpty()) return emptyMap()
+
+        val places = withContext(Dispatchers.IO) {
+            SupabaseManager.client.postgrest["places"]
+                .select {
+                    filter {
+                        or {
+                            placeIds.forEach { id ->
+                                eq("kakao_place_id", id)
+                            }
+                        }
+                    }
+                }
+                .decodeList<PlaceDto>()
+        }
+
+        return places.associateBy { it.kakaoPlaceId }
+    }
+
+    // ---------- DTO ----------
 
     @Serializable
     private data class FavoriteDto(
@@ -344,21 +474,24 @@ class MyFavoritesActivity : AppCompatActivity() {
     )
 
     @Serializable
+    private data class NotificationDto(
+        @SerialName("user_id") val userId: String,
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("is_enabled") val isEnabled: Boolean
+    )
+
+    @Serializable
+    private data class NotificationInsertDto(
+        @SerialName("user_id") val userId: String,
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        @SerialName("is_enabled") val isEnabled: Boolean = true
+    )
+
+    @Serializable
     private data class PlaceDto(
         @SerialName("kakao_place_id") val kakaoPlaceId: String,
         val name: String? = null,
         val address: String? = null
     )
 
-    @Serializable
-    private data class ReviewDto(
-        val id: Long,
-        @SerialName("kakao_place_id") val kakaoPlaceId: String,
-        val rating: Int,
-        val text: String? = null,
-        val images: List<String>? = null,
-        @SerialName("noise_level_db") val noiseLevelDb: Double,
-        @SerialName("created_at") val createdAt: String? = null,
-        @SerialName("user_id") val userId: String? = null
-    )
 }

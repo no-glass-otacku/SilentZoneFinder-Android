@@ -152,11 +152,12 @@
   - [x] 리뷰 개수 표시
   - [x] 빈 리뷰 목록 처리
 
-- [ ] **Noise Trend Today 그래프 구현**
-  - [ ] 시간대별 소음 수준 그래프/차트 표시
-  - [ ] 시간 라벨 (9:00, 10:00, 11:00, 12:00, 13:00, 14:00 등)
-  - [ ] 해당 장소의 시간대별 평균 dB 데이터 조회
-  - [ ] 그래프 시각화 (라인 차트 또는 바 차트)
+- [x] **Noise Trend Today 그래프 구현**
+  - [x] 시간대별 소음 수준 그래프/차트 표시 (NoiseTrendChartView 구현)
+  - [x] 최근 리뷰 데이터 기반 그래프 표시 (최근 12개 리뷰)
+  - [x] 해당 장소의 리뷰 데이터 조회 및 차트 업데이트
+  - [x] 그래프 시각화 (라인 차트 구현)
+  - [x] 빈 데이터 처리 (리뷰가 2개 미만일 때)
 
 #### 7. 리뷰 이미지 업로드
 - [ ] **이미지 선택 기능**
@@ -200,22 +201,22 @@
   - [ ] 클릭 시 PlaceDetailActivity로 이동
 
 #### 9. 알림 추천 시스템
-- [ ] **알림 권한 요청**
-  - [ ] Android 13+ POST_NOTIFICATIONS 권한
+- [x] **알림 권한 요청**
+  - [x] Android 13+ POST_NOTIFICATIONS 권한 (PermissionHelper, ProfileActivity)
 
-- [ ] **조용한 장소 추천 알림**
-  - [ ] 사용자 위치 기반 주변 조용한 장소 탐지
-  - [ ] 백그라운드 작업 (WorkManager)
-  - [ ] 알림 발송 로직
+- [x] **조용한 장소 추천 알림**
+  - [x] 사용자 위치 기반 주변 조용한 장소 탐지 (QuietZoneWorker)
+  - [x] 백그라운드 작업 (WorkManager, PeriodicWorkRequest)
+  - [x] 알림 발송 로직 (NotificationHelper)
 
 - [ ] **Noise Threshold Alert 구현** (Figma 디자인 반영)
   - [ ] 소음 임계값 설정 기능
   - [ ] 임계값 초과 시 알림 발송
   - [ ] 알림 UI 디자인 구현
 
-- [ ] **NotificationHistoryActivity 구현**
-  - [ ] 알림 히스토리 목록 표시
-  - [ ] 로컬 데이터베이스 또는 Supabase에 알림 기록 저장
+- [x] **NotificationHistoryActivity 구현**
+  - [x] 알림 히스토리 목록 표시 (NotificationHistoryAdapter)
+  - [x] 로컬 SharedPreferences에 알림 기록 저장 (NotificationHistoryManager)
 
 #### 10. 검색 기능 개선
 - [x] **검색 입력 필드 구현** (Figma: "Search for Place Name")
@@ -227,12 +228,12 @@
   - [x] 카테고리 검색 기능 (Restaurants, Cafes, Bars)
 
 - [ ] **검색 결과 캐싱**
-  - [ ] 최근 검색어 저장 (SharedPreferences)
+  - [x] 최근 검색어 저장 (SharedPreferences) ✅
   - [ ] 검색 결과 메모리 캐싱
 
-- [ ] **자동완성 기능**
-  - [ ] 검색어 입력 중 자동완성 제안
-  - [ ] 최근 검색어 표시
+- [x] **자동완성 기능** ✅
+  - [x] 검색어 입력 중 자동완성 제안
+  - [x] 최근 검색어 표시
 
 #### 11. 성능 최적화
 - [ ] **이미지 로딩 최적화**
@@ -319,6 +320,96 @@
   - [ ] 알림 설정
   - [ ] 소음 임계값 설정 (Noise Threshold)
   - [ ] 약관 및 개인정보처리방침 링크
+
+---
+
+## 🔧 **부가 기능 (Optional Features)**
+
+### ✅ 바로 구현 가능한 기능 (API 키 불필요)
+
+#### Local Storages (Room DB, SharedPreferences 확장)
+- [ ] **Room Database 구현**
+  - [ ] Room 의존성 추가 (build.gradle.kts)
+  - [ ] Entity 정의 (Review, Place, Favorite 등)
+  - [ ] DAO (Data Access Object) 구현
+  - [ ] Database 클래스 생성
+  - [ ] Repository 패턴 적용
+
+- [ ] **오프라인 캐싱 기능**
+  - [ ] 리뷰 데이터 로컬 캐싱 (Room DB)
+  - [ ] 즐겨찾기 데이터 로컬 저장
+  - [ ] 장소 정보 캐싱
+  - [ ] 오프라인 모드에서 캐시된 데이터 표시
+  - [ ] 온라인 복귀 시 동기화 (SyncAdapter 또는 WorkManager)
+
+- [x] **검색 기록 저장** ✅
+  - [x] 최근 검색어 저장 (Room DB 또는 SharedPreferences) - SharedPreferences로 구현 완료
+  - [ ] 검색 기록 관리 화면 (검색/삭제)
+  - [x] 자동완성 기능 연동
+
+- [ ] **설정 정보 저장**
+  - [ ] 사용자 설정을 Room DB 또는 SharedPreferences에 저장
+  - [ ] 필터 설정 저장 (소음 수준 필터 기본값)
+  - [ ] 알림 설정 저장
+  - [ ] 앱 재시작 시 설정 복원
+
+#### Contracts (ActivityResultContract 개선)
+- [ ] **Custom ActivityResultContract 구현**
+  - [ ] PlaceDetailContract: 장소 상세 정보 반환
+  - [ ] ReviewResultContract: 리뷰 작성/수정 결과 반환
+  - [ ] ImagePickerContract: 이미지 선택 결과 반환
+  - [ ] LocationPickerContract: 위치 선택 결과 반환
+
+- [ ] **Contract 패턴 적용**
+  - [ ] 기존 ActivityResultLauncher를 Custom Contract로 교체
+  - [ ] 타입 안전성 향상
+  - [ ] 재사용 가능한 Contract 컴포넌트 생성
+  - [ ] Contract 테스트 작성
+
+- [ ] **Intent Contract 개선**
+  - [ ] 명확한 Intent Extra 키 정의 (companion object)
+  - [ ] Intent Builder 패턴 적용
+  - [ ] Intent 검증 로직 추가
+
+#### onDevice AI 기능 (API 키 불필요)
+- [ ] **음성 인식 기능 (Android Speech Recognition)**
+  - [ ] Android Speech Recognition API 사용 (무료, API 키 불필요)
+  - [ ] 리뷰 작성 시 음성 입력 기능 (NewReviewActivity)
+  - [ ] 음성을 텍스트로 변환하여 리뷰 텍스트 자동 입력
+  - [ ] 오프라인 음성 인식 지원 (선택사항, Google 앱 필요)
+
+- [ ] **OCR 기능 (ML Kit Text Recognition)**
+  - [ ] ML Kit Text Recognition 사용 (무료, API 키 불필요)
+  - [ ] Google Play Services 필요 (대부분의 기기에서 기본 제공)
+  - [ ] 리뷰 이미지에서 텍스트 추출
+  - [ ] 메뉴판, 가격표 등에서 정보 자동 추출
+  - [ ] 추출된 텍스트를 리뷰에 자동 입력
+
+---
+
+### 🔑 외부 리소스 필요 (API 키 등)
+
+#### OpenAPIs 연동
+- [ ] **날씨 API 연동** ⚠️ **API 키 필요**
+  - [ ] OpenWeatherMap API 키 발급 (https://openweathermap.org/api)
+    - 무료 플랜: 1,000 calls/day, 60 calls/min
+    - API 키를 `local.properties`에 추가 필요
+  - [ ] 또는 기상청 API 사용 (공공데이터포털 API 키 필요)
+  - [ ] 장소별 날씨 정보 표시 (PlaceDetailActivity)
+  - [ ] 날씨에 따른 소음 수준 예측 정보 제공
+  - [ ] 날씨 데이터 캐싱 (로컬 저장소 활용)
+
+#### AI 기반 추천 시스템 (선택사항)
+- [ ] **AI 기반 추천 시스템** ⚠️ **서버/API 필요**
+  - [ ] 사용자 선호도 기반 장소 추천
+    - 옵션 1: 서버 구축 필요 (백엔드 개발)
+    - 옵션 2: Firebase ML Kit 또는 TensorFlow Lite (모델 학습 필요)
+  - [ ] 소음 수준 예측 모델 (시간대별)
+    - 옵션 1: 서버에서 머신러닝 모델 실행
+    - 옵션 2: TensorFlow Lite로 온디바이스 실행 (모델 학습 필요)
+  - [ ] 개인화된 조용한 장소 추천
+    - 옵션 1: Supabase Edge Functions 활용
+    - 옵션 2: 외부 추천 API 사용 (API 키 필요)
 
 ---
 
@@ -455,20 +546,24 @@ CREATE TABLE profiles (
 - 필터링 기능 (소음 수준별)
 - 즐겨찾기 기능 (추가/제거/목록)
 - 검색 기능 (키워드, 카테고리)
+- 검색 기록 저장 및 자동완성 기능 (SharedPreferences)
 - 현재 위치 기반 검색
 - 프로필 로그인/회원가입
 - 네비게이션 바 (모든 Activity)
 - 개발 모드 (데시벨 직접 입력)
+- Noise Trend Today 그래프 (최근 리뷰 기반)
+- 알림 권한 및 WorkManager (조용한 장소 추천 알림)
+- NotificationHistoryActivity (알림 히스토리)
 
 **🔄 진행 중/예정:**
 - MainActivity에서 즐겨찾기 마커 표시
-- Noise Trend Today 그래프
 - 리뷰 이미지 업로드
-- 알림 추천 시스템
+- Noise Threshold Alert (임계값 설정)
+- Optimal Spots 화면 구현
 
 ---
 
-**마지막 업데이트**: 2025-11-21
+**마지막 업데이트**: 2025-01-24
 **프로젝트**: SilentZoneFinder Android
 **Figma 디자인**: https://www.figma.com/design/F5LHvHsGsOpHQRcn1SabmC/silentZone
 
