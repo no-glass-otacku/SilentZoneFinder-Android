@@ -1,7 +1,6 @@
 package com.example.silentzonefinder_android
 
 import android.Manifest
-import android.app.AlertDialog
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
@@ -321,16 +320,19 @@ class ProfileActivity : AppCompatActivity() {
     }
 
     private fun showImageSourceDialog() {
-        val items = arrayOf("갤러리에서 선택")
-
-        AlertDialog.Builder(this)
-            .setTitle("프로필 사진 설정")
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> pickImageLauncher.launch("image/*")
-                }
+        val dialog = com.example.silentzonefinder_android.fragment.ImageSourceDialogFragment.newInstance(
+            title = getString(R.string.profile_image_setting),
+            hasCamera = false // 프로필은 갤러리만 사용
+        )
+        dialog.setOnSourceSelectedListener(object : com.example.silentzonefinder_android.fragment.ImageSourceDialogFragment.OnSourceSelectedListener {
+            override fun onCameraSelected() {
+                // 프로필에서는 카메라 사용 안 함
             }
-            .show()
+            override fun onGallerySelected() {
+                pickImageLauncher.launch("image/*")
+            }
+        })
+        dialog.show(supportFragmentManager, "image_source")
     }
 
     private fun loadProfileImageFromSupabase() {

@@ -110,37 +110,17 @@ class ReviewAdapter :
                     }
                     //이미지 클릭 시 확대 다이얼로그 띄우기
                     setOnClickListener {
-                        showZoomDialog(context, imageUrl)
+                        // DialogFragment 사용
+                        val fragment = com.example.silentzonefinder_android.fragment.ImageZoomDialogFragment.newInstance(imageUrl)
+                        // Activity에서 FragmentManager 가져오기
+                        val activity = context as? androidx.appcompat.app.AppCompatActivity
+                        activity?.supportFragmentManager?.let { fm ->
+                            fragment.show(fm, "image_zoom")
+                        }
                     }
                 }
                 container.addView(imageView)
             }
-        }
-        // 이미지를 전체 화면으로 보여주는 다이얼로그 함수
-        private fun showZoomDialog(context: android.content.Context, imageUrl: String) {
-            val dialog = android.app.Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-
-            // 다이얼로그에 들어갈 ImageView 생성
-            val fullScreenImageView = ImageView(context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                scaleType = ImageView.ScaleType.FIT_CENTER // 비율 유지하며 화면에 맞춤
-            }
-
-            // Coil로 고화질 이미지 로드
-            fullScreenImageView.load(imageUrl) {
-                crossfade(true)
-            }
-
-            // 이미지를 한 번 더 누르면 다이얼로그 닫기 (편의성)
-            fullScreenImageView.setOnClickListener {
-                dialog.dismiss()
-            }
-
-            dialog.setContentView(fullScreenImageView)
-            dialog.show()
         }
         private fun setupAmenities(layout: LinearLayout, amenities: List<String>) {
             layout.removeAllViews()

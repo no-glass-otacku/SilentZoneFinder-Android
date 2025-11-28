@@ -45,11 +45,22 @@
   - [x] DUMMY_PLACE_ID, DUMMY_USER_ID 제거
 
 #### 2. 지도 실시간 소음 표시
+- [x] **KakaoMap MapView 구현** ✅
+  - [x] KakaoMap SDK 연동 (MapApplication에서 초기화)
+  - [x] MapView 레이아웃 구현 (activity_main.xml)
+  - [x] MapView 생명주기 관리 (MapLifeCycleCallback)
+  - [x] KakaoMap 인스턴스 관리 및 콜백 처리
+  - [x] 카메라 위치 및 줌 레벨 관리
+  - [x] 현재 위치 표시 기능 (FloatingActionButton)
+  - [x] 현재 위치 마커 표시 (파란색 점)
+
 - [x] **지도 마커를 리뷰 데이터 기반으로 동적 생성**
-  - [x] 카테고리 검색 결과에 대해 Supabase에서 리뷰 조회
   - [x] 각 장소별 평균 dB 계산
   - [x] 평균 dB에 따라 마커 색상/스타일 적용 (Optimal, Good, Normal, Loud)
   - [x] 리뷰가 없는 장소는 기본 마커 표시
+  - [x] LabelLayer를 사용한 마커 표시
+  - [x] 마커 클릭 이벤트 처리 (장소 상세 화면 이동)
+  - [x] InfoWindow 표시 기능
 - [x] MainActivity의 샘플 데이터 제거 (Supabase 리뷰 기반 마커만 사용)
 
 - [x] **지도 필터링 기능 UI 구현** (Figma: "All Locations" 드롭다운)
@@ -63,7 +74,6 @@
   - [x] 각 장소별 dB 값 표시 (마커에 표시됨)
   - [x] 검색 입력 필드 구현 (키워드 검색 기능 포함)
   - [x] 필터 드롭다운 구현
-  - [x] 카테고리 칩 그룹 (Restaurants, Cafes, Bars)
 
 - [x] **지도 줌/이동 시 주변 리뷰 데이터 자동 로드**
   - [x] 카메라 이동 이벤트 리스너 추가
@@ -130,7 +140,6 @@
 - [x] **FusedLocationProviderClient로 현재 위치 가져오기**
   - [x] MainActivity에서 현재 위치 획득
   - [x] 지도 초기 위치를 현재 위치로 설정 (moveToCurrentLocation 함수)
-  - [x] 카테고리 검색 시 현재 위치 기준 반경 검색 (radius: 1000m)
 
 - [x] **현재 위치 마커 표시**
   - [x] 파란색 점으로 현재 위치 표시
@@ -160,21 +169,24 @@
   - [x] 빈 데이터 처리 (리뷰가 2개 미만일 때)
 
 #### 7. 리뷰 이미지 업로드
-- [ ] **이미지 선택 기능**
-  - [ ] 갤러리에서 이미지 선택 (Intent.ACTION_PICK)
-  - [ ] 카메라로 사진 촬영 (선택사항)
-  - [ ] 이미지 미리보기 표시
+- [x] **이미지 선택 기능** ✅
+  - [x] 갤러리에서 이미지 선택 (Intent.ACTION_PICK, ActivityResultContracts.StartActivityForResult)
+  - [x] 카메라로 사진 촬영 (ActivityResultContracts.TakePicture)
+  - [x] 이미지 미리보기 표시 (ReviewImageAdapter 사용)
+  - [x] 이미지 삭제 기능
 
-- [ ] **Supabase Storage에 이미지 업로드**
-  - [ ] Storage 버킷 생성 (`review-images`)
-  - [ ] 이미지 파일 업로드
-  - [ ] 업로드된 이미지 URL 받아오기
-  - [ ] 리뷰 저장 시 이미지 URL 배열을 JSONB 형식으로 저장: `["url1", "url2"]`
+- [x] **Supabase Storage에 이미지 업로드** ✅
+  - [x] Storage 버킷 사용 (`review-images`)
+  - [x] 이미지 파일 업로드 (`uploadImageToSupabase` 함수)
+  - [x] 업로드된 이미지 URL 받아오기 (publicUrl)
+  - [x] 리뷰 저장 시 이미지 URL 배열을 JSONB 형식으로 저장: `List<String>?` → `["url1", "url2"]`
+  - [x] 리뷰 수정 시 기존 이미지 유지 및 새 이미지 추가 기능
 
-- [ ] **리뷰에서 이미지 표시**
-  - [ ] ReviewAdapter에서 이미지 표시
-  - [ ] Glide 또는 Coil 라이브러리로 이미지 로드
-  - [ ] 이미지 클릭 시 확대 보기
+- [x] **리뷰에서 이미지 표시** ✅
+  - [x] ReviewAdapter에서 이미지 표시 (setupImages 함수)
+  - [x] Coil 라이브러리로 이미지 로드
+  - [x] 이미지 클릭 시 확대 보기 (showZoomDialog)
+  - [x] 둥근 모서리 변환 적용 (RoundedCornersTransformation)
 
 ---
 
@@ -225,7 +237,6 @@
   - [x] 키워드 검색 기능 (카카오 로컬 API 사용)
   - [x] 검색 결과 목록 표시 (RecyclerView)
   - [x] 검색 결과 클릭 시 장소 상세 화면으로 이동
-  - [x] 카테고리 검색 기능 (Restaurants, Cafes, Bars)
 
 - [ ] **검색 결과 캐싱**
   - [x] 최근 검색어 저장 (SharedPreferences) ✅
@@ -279,12 +290,13 @@
   - [x] 모든 Activity에 네비게이션 바 구현 (MainActivity, MyReviewsActivity, MyFavoritesActivity, ProfileActivity)
 
 #### 14. 소음 측정 개선
-- [x] **소음 측정 기본 기능**
-  - [x] AudioRecord를 사용한 실시간 소음 측정
-  - [x] dB 값 계산 (20 * log10(amplitude))
+- [x] **소음 측정 기본 기능** (신호 처리 기반, AI/ML 아님)
+  - [x] AudioRecord를 사용한 실시간 소음 측정 (Android 기본 API)
+  - [x] dB 값 계산 (20 * log10(amplitude)) - 수학적 계산
   - [x] 50ms마다 UI 업데이트
   - [x] 측정 시작/중지 기능
   - [x] 측정된 최종 dB 값 저장
+  - **참고**: 현재 구현은 신호 처리(Signal Processing) 방식이며, ML Kit이나 TensorFlow Lite 같은 머신러닝 모델을 사용하지 않음
 
 - [ ] **dB 측정 정확도 향상**
   - [ ] 마이크 캘리브레이션
@@ -328,12 +340,14 @@
 ### ✅ 바로 구현 가능한 기능 (API 키 불필요)
 
 #### Local Storages (Room DB, SharedPreferences 확장)
-- [ ] **Room Database 구현**
-  - [ ] Room 의존성 추가 (build.gradle.kts)
-  - [ ] Entity 정의 (Review, Place, Favorite 등)
-  - [ ] DAO (Data Access Object) 구현
-  - [ ] Database 클래스 생성
-  - [ ] Repository 패턴 적용
+- [x] **Room Database 구현** ✅
+  - [x] Room 의존성 추가 (build.gradle.kts) - Room 2.6.1, KSP 플러그인 추가
+  - [x] Entity 정의 (PlaceEntity, ReviewEntity, FavoriteEntity)
+  - [x] DAO (Data Access Object) 구현 (PlaceDao, ReviewDao, FavoriteDao)
+  - [x] Database 클래스 생성 (SilentZoneDatabase)
+  - [x] Repository 패턴 적용 (PlaceRepository, ReviewRepository, FavoriteRepository)
+  - [x] TypeConverter 구현 (StringListConverter - 이미지 URL 리스트 변환)
+  - [x] DatabaseHelper 유틸리티 클래스 생성
 
 - [ ] **오프라인 캐싱 기능**
   - [ ] 리뷰 데이터 로컬 캐싱 (Room DB)
@@ -342,41 +356,60 @@
   - [ ] 오프라인 모드에서 캐시된 데이터 표시
   - [ ] 온라인 복귀 시 동기화 (SyncAdapter 또는 WorkManager)
 
-- [x] **검색 기록 저장** ✅
-  - [x] 최근 검색어 저장 (Room DB 또는 SharedPreferences) - SharedPreferences로 구현 완료
-- [x] 검색 기록 관리 화면 (검색/삭제)
-  - [x] 자동완성 기능 연동
-
-- [ ] **설정 정보 저장**
-  - [ ] 사용자 설정을 Room DB 또는 SharedPreferences에 저장
+- [ ] **설정 정보 저장 개선**
   - [ ] 필터 설정 저장 (소음 수준 필터 기본값)
-  - [ ] 알림 설정 저장
-  - [ ] 앱 재시작 시 설정 복원
+  - [ ] 언어 설정 저장
+  - [ ] 다크 모드 설정 저장
+
+#### Fragment 활용 (DialogFragment, BottomSheetDialogFragment)
+**📌 참고**: 네비게이션 바는 유지하고, 재사용 가능한 UI 컴포넌트를 Fragment로 분리
+
+- [x] **DialogFragment 구현** ✅ (높은 우선순위)
+  - [x] 이미지 확대 보기 DialogFragment (ImageZoomDialogFragment) - ReviewAdapter에서 사용
+  - [x] 이미지 소스 선택 DialogFragment (ImageSourceDialogFragment) - ProfileActivity, NewReviewActivity에서 사용, 코드 중복 제거
+  - [ ] 삭제 확인 DialogFragment (MyReviewsActivity, MyFavoritesActivity, SearchHistoryActivity 재사용)
+
+- [ ] **BottomSheetDialogFragment 구현** (중간 우선순위)
+  - [ ] 필터 선택 Bottom Sheet (MyReviewsActivity의 PopupMenu → BottomSheetDialogFragment)
+  - [ ] 정렬 옵션 Bottom Sheet (MyReviewsActivity의 정렬 기능)
+
+- [ ] **재사용 가능한 Fragment** (선택사항)
+  - [ ] 프로필 로그인 Fragment (ProfileActivity의 로그인 레이아웃)
+  - [ ] Settings 화면 Fragment 구성 (ViewPager2 + 여러 Fragment)
 
 #### Contracts (ActivityResultContract 개선)
-- [ ] **Custom ActivityResultContract 구현**
+- [x] **ActivityResultContracts 기본 구현** ✅
+  - [x] ImagePickerContract: 갤러리에서 이미지 선택 (`ActivityResultContracts.StartActivityForResult()`)
+  - [x] CameraContract: 카메라로 사진 촬영 (`ActivityResultContracts.TakePicture()`)
+  - [x] PermissionContract: 카메라 권한 요청 (`ActivityResultContracts.RequestPermission()`)
+  - [x] NewReviewActivity에서 리뷰 이미지 업로드 시 카메라/갤러리 연동 구현 완료
+  - [x] FileProvider를 사용한 카메라 이미지 URI 처리
+
+- [ ] **Custom ActivityResultContract 구현** (향후 개선)
   - [ ] PlaceDetailContract: 장소 상세 정보 반환
   - [ ] ReviewResultContract: 리뷰 작성/수정 결과 반환
-  - [ ] ImagePickerContract: 이미지 선택 결과 반환
   - [ ] LocationPickerContract: 위치 선택 결과 반환
 
-- [ ] **Contract 패턴 적용**
+- [ ] **Contract 패턴 개선** (향후 개선)
   - [ ] 기존 ActivityResultLauncher를 Custom Contract로 교체
   - [ ] 타입 안전성 향상
   - [ ] 재사용 가능한 Contract 컴포넌트 생성
   - [ ] Contract 테스트 작성
 
-- [ ] **Intent Contract 개선**
+- [ ] **Intent Contract 개선** (향후 개선)
   - [ ] 명확한 Intent Extra 키 정의 (companion object)
   - [ ] Intent Builder 패턴 적용
   - [ ] Intent 검증 로직 추가
 
 #### onDevice AI 기능 (API 키 불필요)
+**⚠️ 참고**: 이 섹션은 **머신러닝 모델**을 사용하는 기능입니다. 현재 구현된 데시벨 측정(AudioRecord + 수학적 계산)과는 **다른 기술**입니다.
+
 - [ ] **음성 인식 기능 (Android Speech Recognition)**
   - [ ] Android Speech Recognition API 사용 (무료, API 키 불필요)
   - [ ] 리뷰 작성 시 음성 입력 기능 (NewReviewActivity)
   - [ ] 음성을 텍스트로 변환하여 리뷰 텍스트 자동 입력
   - [ ] 오프라인 음성 인식 지원 (선택사항, Google 앱 필요)
+  - **기술**: ML 모델 기반 음성-텍스트 변환
 
 - [ ] **OCR 기능 (ML Kit Text Recognition)**
   - [ ] ML Kit Text Recognition 사용 (무료, API 키 불필요)
@@ -384,6 +417,7 @@
   - [ ] 리뷰 이미지에서 텍스트 추출
   - [ ] 메뉴판, 가격표 등에서 정보 자동 추출
   - [ ] 추출된 텍스트를 리뷰에 자동 입력
+  - **기술**: ML 모델 기반 이미지-텍스트 변환
 
 ---
 
@@ -545,7 +579,7 @@ CREATE TABLE profiles (
 - 지도 마커 표시 (리뷰 데이터 기반)
 - 필터링 기능 (소음 수준별)
 - 즐겨찾기 기능 (추가/제거/목록)
-- 검색 기능 (키워드, 카테고리)
+- 검색 기능 (키워드)
 - 검색 기록 저장 및 자동완성 기능 (SharedPreferences)
 - 현재 위치 기반 검색
 - 프로필 로그인/회원가입
@@ -575,3 +609,5 @@ CREATE TABLE profiles (
 - `SUPABASE_RLS_SETUP.md` - RLS 정책 설정 가이드
 - `supabase_rls_policies.sql` - RLS 정책 SQL 쿼리
 - `LOGCAT_FILTER_GUIDE.md` - Logcat 필터링 가이드
+- `NAVIGATION_MIGRATION_GUIDE.md` - Activity → Fragment + Navigation Component 마이그레이션 가이드
+- `FRAGMENT_OPPORTUNITIES.md` - Fragment로 분리할 수 있는 요소들 (DialogFragment, BottomSheet 등)

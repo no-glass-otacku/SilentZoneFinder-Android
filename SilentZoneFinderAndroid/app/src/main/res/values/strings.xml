@@ -132,4 +132,10 @@
     <string name="noise_threshold_save">Save Alert</string>
     <string name="noise_threshold_info_title">About Noise Threshold Alerts</string>
     <string name="noise_threshold_info_text">When you set a noise threshold, you\'ll receive notifications when the noise level at your favorited places exceeds this value. This helps you stay aware of noisy environments.</string>
+    <string name="select_image_source">Select Image Source</string>
+    <string name="camera">Camera</string>
+    <string name="gallery">Gallery</string>
+    <string name="cancel">Cancel</string>
+    <string name="profile_image_setting">프로필 사진 설정</string>
+    <string name="select_from_gallery">갤러리에서 선택</string>
 </resources>

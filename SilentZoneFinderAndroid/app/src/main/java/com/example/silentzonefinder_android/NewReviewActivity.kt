@@ -922,17 +922,19 @@ class NewReviewActivity : AppCompatActivity() {
         }
     }
     private fun showImageSourceDialog() {
-        val options = arrayOf("Camera", "Gallery")
-
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Select Image Source")
-            .setItems(options) { dialog, which ->
-                when (which) {
-                    0 -> checkCameraPermissionAndOpen()  // 카메라 선택- 권한 확인 후 실행
-                    1 -> openGallery() // 갤러리 선택
-                }
+        val dialog = com.example.silentzonefinder_android.fragment.ImageSourceDialogFragment.newInstance(
+            title = getString(R.string.select_image_source),
+            hasCamera = true
+        )
+        dialog.setOnSourceSelectedListener(object : com.example.silentzonefinder_android.fragment.ImageSourceDialogFragment.OnSourceSelectedListener {
+            override fun onCameraSelected() {
+                checkCameraPermissionAndOpen()
             }
-            .show()
+            override fun onGallerySelected() {
+                openGallery()
+            }
+        })
+        dialog.show(supportFragmentManager, "image_source")
     }
 
     private fun setupImageRecyclerView() {

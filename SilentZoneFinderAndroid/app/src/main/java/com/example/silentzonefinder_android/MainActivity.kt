@@ -86,7 +86,6 @@ class MainActivity : AppCompatActivity() {
     private var kakaoMap: KakaoMap? = null
     private lateinit var searchResultsAdapter: PlaceSearchAdapter
     private var searchHistoryAdapter: ArrayAdapter<String>? = null
-    private var categorySearchJob: Job? = null
     private var labelLayer: LabelLayer? = null
     private var infoWindowLayer: InfoWindowLayer? = null
     private var currentInfoWindow: InfoWindow? = null
@@ -154,7 +153,6 @@ class MainActivity : AppCompatActivity() {
         setupMap()
         setupSearch()
         setupSearchResultsList()
-        setupCategoryChips()
         setupFilterDropdown()
         setupMyLocationButton()
 
@@ -345,7 +343,6 @@ class MainActivity : AppCompatActivity() {
             val lat = place.y.toDoubleOrNull()
             val lng = place.x.toDoubleOrNull()
             moveMapToPlace(place)
-            binding.categoryChipGroup.clearCheck()
             showSearchResults(emptyList(), renderMarkersWhenEmpty = false)
             val address = place.road_address_name.takeIf { it.isNotBlank() } ?: place.address_name
             shouldClearSearchResultsOnResume = true
@@ -366,72 +363,6 @@ class MainActivity : AppCompatActivity() {
         binding.searchResultsCard.isVisible = false
     }
 
-    private fun setupCategoryChips() {
-        binding.categoryChipGroup.setOnCheckedStateChangeListener { _, checkedIds ->
-            if (checkedIds.isEmpty()) {
-                categorySearchJob?.cancel()
-                showSearchResults(emptyList())
-                updateCategoryLabels(null, emptyList())
-                return@setOnCheckedStateChangeListener
-            }
-
-            val option = when (checkedIds.first()) {
-                R.id.chipRestaurant -> CategoryOption(code = "FD6", label = "Restaurants")
-                R.id.chipCafe -> CategoryOption(code = "CE7", label = "Cafes")
-                R.id.chipBar -> CategoryOption(code = "FD6", label = "Bars", query = "bar")
-                else -> null
-            } ?: return@setOnCheckedStateChangeListener
-
-            loadCategoryPlaces(option)
-        }
-    }
-
-    private fun loadCategoryPlaces(option: CategoryOption) {
-        // 현재 카메라 위치 사용 (moveCamera 호출 시 lastKnownCenter가 업데이트됨)
-        val center = lastKnownCenter
-        binding.searchEditText.clearFocus()
-        categorySearchJob?.cancel()
-        categorySearchJob = lifecycleScope.launch {
-            try {
-                val results = requestCategoryPlaces(option, center)
-                updateCategoryLabels(option, results)
-                showSearchResults(emptyList(), renderMarkersWhenEmpty = false)
-            } catch (e: Exception) {
-                android.util.Log.e("MainActivity", "Category search failed", e)
-                Toast.makeText(this@MainActivity, "Category search failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                updateCategoryLabels(option, emptyList())
-                showSearchResults(emptyList())
-                binding.categoryChipGroup.clearCheck()
-            }
-        }
-    }
-
-    private suspend fun requestCategoryPlaces(option: CategoryOption, center: LatLng): List<PlaceDocument> {
-        val apiKey = BuildConfig.KAKAO_REST_API_KEY
-        if (apiKey.isEmpty()) {
-            throw IllegalStateException("Kakao REST API key is not configured.")
-        }
-
-        val response: KakaoPlaceResponse = httpClient.get("https://dapi.kakao.com/v2/local/search/category.json") {
-            url {
-                parameters.append("category_group_code", option.code)
-                parameters.append("radius", "1000")
-                parameters.append("sort", "distance")
-                parameters.append("page", "1")
-                parameters.append("size", "15")
-                parameters.append("x", center.longitude.toString())
-                parameters.append("y", center.latitude.toString())
-                option.query?.let { parameters.append("query", it) }
-            }
-            headers {
-                append("Authorization", "KakaoAK $apiKey")
-                append("Accept-Language", "en-US")
-            }
-        }.body()
-
-        return response.documents
-    }
-
     private fun showSearchResults(
         results: List<PlaceDocument>,
         renderMarkersWhenEmpty: Boolean = true
@@ -447,67 +378,6 @@ class MainActivity : AppCompatActivity() {
         } else if (renderMarkersWhenEmpty) {
             renderFilteredMarkers()
         }
-    }
-
-    private fun updateCategoryLabels(option: CategoryOption?, places: List<PlaceDocument>) {
-        if (option == null || places.isEmpty()) {
-            renderFilteredMarkers()
-            return
-        }
-
-        if (allPlaceMarkers.isEmpty()) {
-            Toast.makeText(
-                this,
-                getString(R.string.map_no_review_places_for_category, option.label.ifBlank { "-" }),
-                Toast.LENGTH_SHORT
-            ).show()
-            renderFilteredMarkers()
-            return
-        }
-
-        // 카테고리 필터링: 카카오 API 결과의 카테고리 정보 확인
-        val filteredPlaces = places.filter { place ->
-            when (option.label) {
-                "Restaurants" -> {
-                    // Restaurants: FD6 카테고리이면서 카페가 아닌 것
-                    place.category_group_code == "FD6" && 
-                    !place.category_name.lowercase(Locale.US).contains("cafe") &&
-                    !place.category_name.lowercase(Locale.US).contains("카페")
-                }
-                "Cafes" -> {
-                    // Cafes: CE7 카테고리이거나 카테고리 이름에 cafe/카페가 포함된 것
-                    place.category_group_code == "CE7" ||
-                    place.category_name.lowercase(Locale.US).contains("cafe") ||
-                    place.category_name.lowercase(Locale.US).contains("카페")
-                }
-                "Bars" -> {
-                    // Bars: FD6 카테고리이면서 bar/바/술집이 포함된 것
-                    place.category_group_code == "FD6" &&
-                    (place.category_name.lowercase(Locale.US).contains("bar") ||
-                     place.category_name.lowercase(Locale.US).contains("바") ||
-                     place.category_name.lowercase(Locale.US).contains("술집") ||
-                     place.place_name.lowercase(Locale.US).contains("bar") ||
-                     place.place_name.lowercase(Locale.US).contains("바"))
-                }
-                else -> true
-            }
-        }
-
-        val ids = filteredPlaces.map { it.id }.toSet()
-        val markersById = allPlaceMarkers.associateBy { it.kakaoPlaceId }
-        val matchedPlaces = ids.mapNotNull { markersById[it]?.copy(categoryLabel = option.label) }
-
-        if (matchedPlaces.isEmpty()) {
-            Toast.makeText(
-                this,
-                getString(R.string.map_no_review_places_for_category, option.label.ifBlank { "-" }),
-                Toast.LENGTH_SHORT
-            ).show()
-            renderFilteredMarkers()
-            return
-        }
-
-        renderMarkers(matchedPlaces, moveCameraToFirstMarker = true)
     }
 
     private fun obtainLabelLayer(): LabelLayer? {
@@ -1062,7 +932,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         lastKnownCenter = location
-        updateCategoryLabels(null, emptyList())
         clearMarkers()
     }
 
@@ -1099,9 +968,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.searchEditText.clearFocus()
-        binding.categoryChipGroup.clearCheck()
         showSearchResults(emptyList(), renderMarkersWhenEmpty = false)
-        updateCategoryLabels(null, emptyList())
         clearSelectedPlaceMarker()
         closeInfoWindow()
         clearMarkers()
@@ -1321,12 +1188,6 @@ class MainActivity : AppCompatActivity() {
             true // Indicate that the event has been handled.
         }
     }
-
-    private data class CategoryOption(
-        val code: String,
-        val label: String,
-        val query: String? = null
-    )
 
     @Serializable
     data class KakaoPlaceResponse(
