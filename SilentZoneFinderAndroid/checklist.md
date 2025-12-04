@@ -424,14 +424,20 @@
 ### 🔑 외부 리소스 필요 (API 키 등)
 
 #### OpenAPIs 연동
-- [ ] **날씨 API 연동** ⚠️ **API 키 필요**
-  - [ ] OpenWeatherMap API 키 발급 (https://openweathermap.org/api)
+- [x] **날씨 API 연동** ✅ **API 키 추가 완료**
+  - [x] OpenWeatherMap API 키 발급 및 `local.properties`에 추가 완료
     - 무료 플랜: 1,000 calls/day, 60 calls/min
-    - API 키를 `local.properties`에 추가 필요
-  - [ ] 또는 기상청 API 사용 (공공데이터포털 API 키 필요)
-  - [ ] 장소별 날씨 정보 표시 (PlaceDetailActivity)
-  - [ ] 날씨에 따른 소음 수준 예측 정보 제공
-  - [ ] 날씨 데이터 캐싱 (로컬 저장소 활용)
+    - API 키: `27dca6bd5c3cb9bb19eabbb5d9191fea`
+  - [x] 날씨 데이터 모델 클래스 생성 (WeatherDto.kt)
+  - [x] 날씨 API 서비스 클래스 생성 (WeatherService.kt)
+  - [x] MainActivity에 날씨 위젯 추가 (지도 왼쪽 상단)
+  - [x] 날씨 상세 팝업 BottomSheetDialogFragment 구현
+  - [x] 현재 위치 기반 날씨 정보 표시
+  - [x] 시간대별 날씨 예보 표시
+  - [x] 대기질 정보 표시 (미세먼지, 초미세먼지)
+  - [ ] 장소별 날씨 정보 표시 (PlaceDetailActivity) - 선택사항
+  - [ ] 날씨에 따른 소음 수준 예측 정보 제공 - 선택사항
+  - [ ] 날씨 데이터 캐싱 (로컬 저장소 활용) - 선택사항
 
 #### AI 기반 추천 시스템 (선택사항)
 - [ ] **AI 기반 추천 시스템** ⚠️ **서버/API 필요**

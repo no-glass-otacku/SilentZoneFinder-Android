@@ -138,4 +138,19 @@
     <string name="cancel">Cancel</string>
     <string name="profile_image_setting">프로필 사진 설정</string>
     <string name="select_from_gallery">갤러리에서 선택</string>
+    <string name="weather_icon_description">날씨 아이콘</string>
+    <string name="weather_loading">날씨 정보를 불러오는 중...</string>
+    <string name="weather_error">날씨 정보를 불러올 수 없습니다.</string>
+    <string name="weather_feels_like">체감온도</string>
+    <string name="weather_air_quality_fine">미세</string>
+    <string name="weather_air_quality_ultrafine">초미세</string>
+    <string name="weather_air_quality_good">좋음</string>
+    <string name="weather_air_quality_moderate">보통</string>
+    <string name="weather_air_quality_unhealthy">나쁨</string>
+    <string name="weather_air_quality_very_unhealthy">매우 나쁨</string>
+    <string name="weather_hourly">시간대별</string>
+    <string name="weather_daily">일별</string>
+    <string name="weather_more">날씨 더보기 &gt;</string>
+    <string name="weather_provided_by">제공 기상청</string>
+    <string name="weather_updated">업데이트</string>
 </resources>

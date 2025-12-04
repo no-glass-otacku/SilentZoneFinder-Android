@@ -41,6 +41,10 @@ android {
         manifestPlaceholders["KAKAO_REST_API_KEY"] = kakaoRestApiKey
         manifestPlaceholders["KAKAO_NATIVE_APP_KEY"] = kakaoNativeAppKey
         
+        // OpenWeatherMap 환경 변수 (local.properties에서 읽기)
+        val openWeatherMapApiKey = localProperties.getProperty("openweathermap.api.key", "")
+        buildConfigField("String", "OPENWEATHERMAP_API_KEY", "\"$openWeatherMapApiKey\"")
+        
         // NDK 아키텍처 필터 (카카오맵 SDK 네이티브 라이브러리 포함)
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")

@@ -33,6 +33,8 @@ import com.example.silentzonefinder_android.adapter.PlaceSearchAdapter
 import com.example.silentzonefinder_android.PlaceDetailActivity
 import com.example.silentzonefinder_android.SupabaseManager
 import com.example.silentzonefinder_android.utils.SearchHistoryManager
+import com.example.silentzonefinder_android.fragment.WeatherDetailBottomSheetFragment
+import com.example.silentzonefinder_android.service.WeatherService
 import io.github.jan.supabase.postgrest.postgrest
 import com.kakao.vectormap.KakaoMap
 import com.kakao.vectormap.KakaoMapReadyCallback
@@ -109,7 +111,10 @@ class MainActivity : AppCompatActivity() {
             })
         }
     }
+    private lateinit var weatherService: WeatherService
     private var shouldClearSearchResultsOnResume = false
+    private var currentWeatherLat: Double = 0.0
+    private var currentWeatherLon: Double = 0.0
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -149,12 +154,14 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        weatherService = WeatherService(httpClient)
         
         setupMap()
         setupSearch()
         setupSearchResultsList()
         setupFilterDropdown()
         setupMyLocationButton()
+        setupWeatherWidget()
 
         ReviewNotificationWatcher(this, SupabaseManager.client).start()
     }
@@ -242,6 +249,8 @@ class MainActivity : AppCompatActivity() {
                 lastKnownCenter = defaultLocation
                 android.util.Log.d("MainActivity", "Map is ready.")
                 loadPlacesWithReviews()
+                // 초기 위치 날씨 로드
+                loadWeatherForLocation(defaultLocation.latitude, defaultLocation.longitude)
             }
 
             override fun getPosition(): LatLng {
@@ -1073,6 +1082,67 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupWeatherWidget() {
+        binding.weatherWidgetCard.setOnClickListener {
+            if (currentWeatherLat != 0.0 && currentWeatherLon != 0.0) {
+                val locationName = "현재 위치" // 실제로는 역지오코딩으로 주소 가져오기
+                val fragment = WeatherDetailBottomSheetFragment.newInstance(
+                    currentWeatherLat,
+                    currentWeatherLon,
+                    locationName
+                )
+                fragment.show(supportFragmentManager, "weather_detail")
+            }
+        }
+    }
+
+    private fun loadWeatherForLocation(lat: Double, lon: Double) {
+        currentWeatherLat = lat
+        currentWeatherLon = lon
+        
+        lifecycleScope.launch {
+            try {
+                val weatherResult = weatherService.getCurrentWeather(lat, lon)
+                val airQualityResult = weatherService.getAirQuality(lat, lon)
+
+                weatherResult.onSuccess { weather ->
+                    val temp = weather.main.temp.toInt()
+                    binding.weatherTempTextView.text = "${temp}°"
+                    
+                    // 날씨 아이콘 업데이트 (간단히)
+                    weather.weather.firstOrNull()?.let {
+                        when {
+                            it.main.contains("Clear", ignoreCase = true) -> {
+                                binding.weatherIconImageView.setImageResource(R.drawable.ic_weather_cloud)
+                            }
+                            it.main.contains("Cloud", ignoreCase = true) -> {
+                                binding.weatherIconImageView.setImageResource(R.drawable.ic_weather_cloud)
+                            }
+                            else -> {
+                                binding.weatherIconImageView.setImageResource(R.drawable.ic_weather_cloud)
+                            }
+                        }
+                    }
+                }
+
+                airQualityResult.onSuccess { airQuality ->
+                    val aqi = airQuality.list.firstOrNull()?.main?.aqi ?: 0
+                    val status = when (aqi) {
+                        1 -> "좋음"
+                        2 -> "보통"
+                        3 -> "나쁨"
+                        4 -> "나쁨"
+                        5 -> "매우 나쁨"
+                        else -> "보통"
+                    }
+                    binding.weatherAirQualityTextView.text = "미세 $status"
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to load weather", e)
+            }
+        }
+    }
+
     private fun checkLocationPermissionAndMove() {
         val fineLocationGranted = ContextCompat.checkSelfPermission(
             this,
@@ -1135,6 +1205,8 @@ class MainActivity : AppCompatActivity() {
                     lastKnownCenter = currentLatLng
                     // 현재 위치 마커 추가/업데이트
                     updateCurrentLocationMarker(currentLatLng)
+                    // 날씨 정보 로드
+                    loadWeatherForLocation(location.latitude, location.longitude)
                     Log.d("MainActivity", "Moved to current location: ${location.latitude}, ${location.longitude}")
                 } else {
                     Toast.makeText(
