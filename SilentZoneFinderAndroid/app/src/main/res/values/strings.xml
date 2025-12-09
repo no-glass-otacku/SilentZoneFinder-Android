@@ -60,6 +60,7 @@
     <string name="write_review_button">리뷰 작성하기</string>
     <string name="my_reviews_empty_message">아직 작성한 리뷰가 없어요.\n조용한 장소를 찾아보세요!</string>
     <string name="my_reviews_go_to_map">지도에서 장소 찾기</string>
+    <string name="place_detail_favorite_required_for_notification">먼저 즐겨찾기에 추가해야 알림을 켤 수 있어요.</string>
     <string name="my_reviews_title">My Reviews</string>
     <string name="my_reviews_delete">Delete</string>
     <string name="my_reviews_delete_title">Delete Review</string>

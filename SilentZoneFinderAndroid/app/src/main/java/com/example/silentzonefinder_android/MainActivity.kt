@@ -163,7 +163,7 @@ class MainActivity : AppCompatActivity() {
         setupMyLocationButton()
         setupWeatherWidget()
 
-        ReviewNotificationWatcher(this, SupabaseManager.client).start()
+        //ReviewNotificationWatcher(this, SupabaseManager.client).start()
     }
 
     override fun onResume() {

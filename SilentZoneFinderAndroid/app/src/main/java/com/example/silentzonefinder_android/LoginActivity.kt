@@ -11,6 +11,7 @@ import io.github.jan.supabase.exceptions.HttpRequestException
 import io.github.jan.supabase.exceptions.RestException
 import kotlinx.coroutines.launch
 import java.util.regex.Pattern
+import com.example.silentzonefinder_android.notifications.QuietReviewFirebaseMessagingService
 
 class LoginActivity : AppCompatActivity() {
     private lateinit var binding: ActivityLoginBinding
@@ -151,11 +152,23 @@ class LoginActivity : AppCompatActivity() {
             
             android.util.Log.d("LoginActivity", "로그인 성공")
             Toast.makeText(this, "로그인 성공!", Toast.LENGTH_SHORT).show()
-            
-            // 로그인 성공 후 MainActivity로 이동
-            val intent = android.content.Intent(this, MainActivity::class.java)
-            startActivity(intent)
-            finish()
+
+            // 로그인 성공 후 FCM 토큰을 Supabase(user_devices)에 동기화
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        val token = task.result
+                        QuietReviewFirebaseMessagingService.registerCurrentTokenToSupabase(token)
+                    } else {
+                        android.util.Log.e("LoginActivity", "FCM token fetch failed", task.exception)
+                    }
+
+                    // 토큰 등록이 실패하더라도 앱 흐름은 계속 진행
+                    val intent = android.content.Intent(this, MainActivity::class.java)
+                    startActivity(intent)
+                    finish()
+                }
+
         } catch (e: HttpRequestException) {
             android.util.Log.e("LoginActivity", "로그인 실패 (HttpRequestException)", e)
             android.util.Log.e("LoginActivity", "오류 메시지: ${e.message}")

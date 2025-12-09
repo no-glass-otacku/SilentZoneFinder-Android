@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     id("com.google.devtools.ksp") version "2.0.21-1.0.28"
+    id("com.google.gms.google-services") version "4.4.2"
 }
 
 // local.properties에서 Supabase 키 읽기
@@ -82,6 +83,9 @@ android {
 }
 
 dependencies {
+
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
 
     implementation("io.coil-kt:coil:2.6.0")
 

@@ -41,6 +41,8 @@ class PlaceDetailActivity : AppCompatActivity() {
     private var isFavorite: Boolean = false
     private var isFavoriteLoading: Boolean = false
     private var isNotificationOn: Boolean = false
+    private var alertThresholdDb: Double = 50.0   // 기본값 50 dB (원하면 바꿔도 됨)
+
 
     private val newReviewLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -95,6 +97,14 @@ class PlaceDetailActivity : AppCompatActivity() {
         }
 
         notificationButton.setOnClickListener {
+            if (!isFavorite) {
+                Toast.makeText(
+                    this@PlaceDetailActivity,
+                    getString(R.string.place_detail_favorite_required_for_notification),
+                    Toast.LENGTH_LONG
+                ).show()
+                return@setOnClickListener
+            }
             val wasOn = isNotificationOn
             toggleNotification { isNowOn ->
                 if (isNowOn && !wasOn) {
@@ -358,6 +368,10 @@ class PlaceDetailActivity : AppCompatActivity() {
                         .decodeList<FavoriteDto>()
                 }
                 isFavorite = favorites.isNotEmpty()
+                // ★ 임계값 로딩: 있으면 그 값 쓰고, 없으면 기본값 유지
+                favorites.firstOrNull()?.alertThresholdDb?.let { threshold ->
+                    alertThresholdDb = threshold
+                }
                 updateFavoriteButtonIcon()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load favorite status", e)
@@ -429,6 +443,16 @@ class PlaceDetailActivity : AppCompatActivity() {
             onComplete?.invoke(isNotificationOn)
             return
         }
+        // ★ 즐겨찾기 안 한 상태면 여기서도 바로 차단
+        if (!isFavorite) {
+            Toast.makeText(
+                this,
+                getString(R.string.place_detail_favorite_required_for_notification),
+                Toast.LENGTH_LONG
+            ).show()
+            onComplete?.invoke(isNotificationOn)
+            return
+        }
 
         lifecycleScope.launch {
             try {
@@ -438,7 +462,19 @@ class PlaceDetailActivity : AppCompatActivity() {
                     val table = SupabaseManager.client.postgrest["place_notifications"]
 
                     if (newState) {
-                        // 🔔 ON: 먼저 row 존재 여부 확인
+                        // ★ 0-1) 즐겨찾기(favorites)에 임계값 포함해서 upsert
+                        SupabaseManager.client.postgrest["favorites"].upsert(
+                            FavoriteInsertDto(
+                                userId = userId,
+                                kakaoPlaceId = currentPlaceId,
+                                alertThresholdDb = 65.0  // 현재 메모리 값 사용
+                            )
+                        )
+
+                        // ★ 0-2) 즐겨찾기 상태도 true 로 맞춰주기 (UI 반영)
+                        isFavorite = true
+
+                        // 1) place_notifications row 존재 여부 확인
                         val existing = table.select {
                             filter {
                                 eq("user_id", userId)
@@ -447,7 +483,6 @@ class PlaceDetailActivity : AppCompatActivity() {
                         }.decodeList<NotificationDto>()
 
                         if (existing.isEmpty()) {
-                            // 없으면 새로 INSERT (true)
                             table.insert(
                                 NotificationInsertDto(
                                     userId = userId,
@@ -456,7 +491,6 @@ class PlaceDetailActivity : AppCompatActivity() {
                                 )
                             )
                         } else {
-                            // 있으면 UPDATE 로 true 로 변경
                             table.update(
                                 {
                                     set("is_enabled", true)
@@ -469,7 +503,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                             }
                         }
                     } else {
-                        // 🔕 OFF: is_enabled = false 로만 업데이트
+                        // 🔕 OFF: place_notifications 에서 is_enabled = false
                         table.update(
                             {
                                 set("is_enabled", false)
@@ -482,6 +516,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                         }
                     }
                 }
+
 
                 isNotificationOn = newState
                 updateNotificationButtonIcon()
@@ -527,6 +562,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                             filter {
                                 eq("user_id", userId)
                                 eq("kakao_place_id", currentPlaceId)
+                                alertThresholdDb = alertThresholdDb   // ★ 추가
                             }
                         }
                     }
