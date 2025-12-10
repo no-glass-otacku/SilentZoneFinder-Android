@@ -73,14 +73,18 @@ async function sendFcmToTokens(
   const url =
     `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`;
 
-  const baseMessage = {
-    notification: {
-      title: "조용한 리뷰가 등록됐어요",
-      body: `새 소음 ${record.noise_level_db.toFixed(1)} dB 리뷰가 올라왔습니다.`,
-    },
-  };
+  console.log(
+    "sendFcmToTokens: will send to",
+    tokens.length,
+    "tokens",
+  );
+
+
 
   for (const token of tokens) {
+    const shortToken = token.slice(0, 16) + "...";
+    console.log("sendFcmToTokens: sending to token =", shortToken);
+
     const payload = {
       message: {
         token,
@@ -101,23 +105,82 @@ async function sendFcmToTokens(
       body: JSON.stringify(payload),
     });
 
+    const text = await res.text();
+    console.log(
+      "sendFcmToTokens: FCM response for",
+      shortToken,
+      "status =",
+      res.status,
+      "body =",
+      text,
+    );
+
     if (!res.ok) {
-      const text = await res.text();
-      console.error("FCM send error:", res.status, text);
+      console.error(
+        "sendFcmToTokens: FCM send error for",
+        shortToken,
+        "status =",
+        res.status,
+      );
     }
   }
 }
 
 serve(async (req: Request) => {
-  const payload = await req.json();
-  const record = payload.record as ReviewRecord;
+  if (req.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
 
-  // 1단계: 이 장소를 즐겨찾기 + threshold 조건 만족하는 사용자 찾기
+  // 1) JSON 파싱
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return new Response("Invalid JSON", { status: 400 });
+  }
+
+  // 2) review_id 기반으로 DB에서 리뷰 조회
+  const rawReviewId = body.review_id ?? null;
+  const reviewId = rawReviewId !== null ? Number(rawReviewId) : NaN;
+
+  if (!Number.isFinite(reviewId)) {
+    console.error("invalid review_id:", rawReviewId);
+    return new Response("review_id required", { status: 400 });
+  }
+
+  console.log("notify_quiet_review called with review_id =", reviewId);
+
+  const { data: review, error: reviewError } = await supabase
+    .from("reviews")
+    .select("*")
+    .eq("id", reviewId)
+    .single<ReviewRecord>();
+
+  if (reviewError || !review) {
+    console.error("review select error", reviewError);
+    return new Response("review not found", { status: 404 });
+  }
+
+  const record: ReviewRecord = review;
+
+  if (!record.kakao_place_id || typeof record.noise_level_db !== "number") {
+    console.error("invalid record payload", record);
+    return new Response("invalid record", { status: 400 });
+  }
+
+  console.log(
+    "review info:",
+    "kakao_place_id =",
+    record.kakao_place_id,
+    "noise_level_db =",
+    record.noise_level_db,
+  );
+
+  // 3) 즐겨찾기 + threshold 조건 만족 사용자 찾기
   const { data: favorites, error: favErr } = await supabase
     .from("favorites")
     .select("user_id, alert_threshold_db")
     .eq("kakao_place_id", record.kakao_place_id)
-    // "리뷰 소음 <= 내가 설정한 임계값" 인 사람에게만 알림
     .gte("alert_threshold_db", record.noise_level_db);
 
   if (favErr) {
@@ -130,11 +193,13 @@ serve(async (req: Request) => {
     return new Response("no subscribers", { status: 200 });
   }
 
+  console.log("favorites matched:", favorites.length);
+
   const favUserIds = Array.from(
     new Set(favorites.map((f: any) => f.user_id as string)),
   );
 
-  // 2단계: 해당 장소에 대해 알림 ON(is_enabled=true)인 사용자만 필터링
+  // 4) 알림 ON인 사용자만 필터링
   const { data: notifRows, error: notifErr } = await supabase
     .from("place_notifications")
     .select("user_id")
@@ -152,11 +217,13 @@ serve(async (req: Request) => {
     return new Response("no subscribers", { status: 200 });
   }
 
+  console.log("enabled notifications users:", notifRows.length);
+
   const notifyUserIds = Array.from(
     new Set(notifRows.map((n: any) => n.user_id as string)),
   );
 
-  // 3단계: 최종 대상 사용자들의 디바이스 토큰 조회
+  // 5) 디바이스 토큰 조회
   const { data: devices, error: devErr } = await supabase
     .from("user_devices")
     .select("fcm_token, user_id")
@@ -172,13 +239,17 @@ serve(async (req: Request) => {
     return new Response("no tokens", { status: 200 });
   }
 
+  console.log("user_devices rows:", devices.length);
+
   const tokens: string[] = Array.from(
     new Set(
       devices
         .map((d: any) => d.fcm_token as string | null)
-        .filter((t: string | null): t is string => t !== null && t !== "")
+        .filter((t: string | null): t is string => t !== null && t !== ""),
     ),
   );
+
+  console.log("deduped tokens length:", tokens.length);
 
   if (tokens.length === 0) {
     console.log("no tokens after dedupe");

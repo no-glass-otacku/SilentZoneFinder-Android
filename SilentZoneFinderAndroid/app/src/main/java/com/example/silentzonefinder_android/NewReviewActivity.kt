@@ -444,10 +444,18 @@ class NewReviewActivity : AppCompatActivity() {
                     noiseLevelDb = noiseLevelDb
                 )
 
-                withContext(Dispatchers.IO) {
+                // 1) INSERT + 바로 반환된 row에서 id 가져오기
+                val insertedReviewId = withContext(Dispatchers.IO) {
                     SupabaseManager.client.postgrest["reviews"]
-                        .insert(reviewData)
+                        .insert(reviewData) {
+                            // PostgREST가 INSERT된 row를 반환하도록
+                            select()
+                        }
+                        .decodeSingle<ReviewDto>()
+                        .id
                 }
+                // 2) Edge Function 호출 (비동기)
+                notifyQuietReview(insertedReviewId)
 
                 Log.d(TAG, "Review saved successfully")
                 Toast.makeText(this@NewReviewActivity, getString(R.string.new_review_save_success), Toast.LENGTH_SHORT).show()
@@ -677,6 +685,41 @@ class NewReviewActivity : AppCompatActivity() {
             }
         }
     }
+    private fun notifyQuietReview(reviewId: Int) {
+        // 리뷰 저장 이후, 조용한 리뷰 알림 서버 호출
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val url = java.net.URL(
+                    "https://suaeqwzprtedtbgvbsgg.functions.supabase.co/notify_quiet_review"
+                )
+                val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    doOutput = true
+                    // 필요하면 Authorization 헤더도 추가 가능
+                    // setRequestProperty("Authorization", "Bearer ${BuildConfig.SUPABASE_ANON_KEY}")
+                }
+
+                val body = """{"review_id": $reviewId}"""
+                conn.outputStream.use { os ->
+                    os.write(body.toByteArray(Charsets.UTF_8))
+                }
+
+                val code = conn.responseCode
+                Log.d(TAG, "notifyQuietReview response code = $code")
+
+                // 응답 바디는 필요 없으면 버려도 됨
+                try {
+                    conn.inputStream?.close()
+                } catch (_: Exception) { }
+
+                conn.disconnect()
+            } catch (e: Exception) {
+                Log.e(TAG, "notifyQuietReview failed", e)
+            }
+        }
+    }
+
 
     // 개발 모드 설정 (디버그 빌드에서만 활성화)
     private fun setupDevMode() {

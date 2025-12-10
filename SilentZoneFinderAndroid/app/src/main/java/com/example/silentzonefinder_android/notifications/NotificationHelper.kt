@@ -26,7 +26,7 @@ object NotificationHelper {
         val channel = NotificationChannel(
             CHANNEL_ID,
             CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_DEFAULT
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = CHANNEL_DESCRIPTION
         }
@@ -60,6 +60,7 @@ object NotificationHelper {
             .setSmallIcon(R.drawable.ic_notifications)
             .setContentTitle("조용한 리뷰 추가됨")
             .setContentText("소음 ${review.noiseLevelDb} dB")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
             .build()

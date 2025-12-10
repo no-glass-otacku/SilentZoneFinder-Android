@@ -3,11 +3,10 @@ package com.example.silentzonefinder_android.notifications
 import android.util.Log
 import com.example.silentzonefinder_android.SupabaseManager
 import com.example.silentzonefinder_android.data.ReviewDto
-import com.example.silentzonefinder_android.utils.NotificationHistoryManager
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.auth.auth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -18,14 +17,12 @@ class QuietReviewFirebaseMessagingService : FirebaseMessagingService() {
         private const val TAG = "QuietReviewFcmService"
 
         /**
-         * 로그인 직후 등, 이미 만들어진 FCM 토큰을 Supabase에 동기화할 때 쓰는 헬퍼
+         * 로그인 직후 userId + token 을 확실하게 등록하는 함수
          */
-        fun registerCurrentTokenToSupabase(token: String) {
+        fun registerTokenForUser(userId: String, token: String) {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val session =
-                        SupabaseManager.client.auth.currentSessionOrNull() ?: return@launch
-                    val userId = session.user?.id?.toString() ?: return@launch
+                    Log.d(TAG, "registerTokenForUser: userId=$userId token=$token")
 
                     SupabaseManager.client.postgrest["user_devices"].upsert(
                         mapOf(
@@ -34,16 +31,39 @@ class QuietReviewFirebaseMessagingService : FirebaseMessagingService() {
                         )
                     )
 
-                    Log.d(TAG, "user_devices upsert success (login): $userId")
+                    Log.d(TAG, "user_devices upsert success (registerTokenForUser)")
                 } catch (e: Exception) {
-                    Log.e(TAG, "user_devices upsert failed (login)", e)
+                    Log.e(TAG, "user_devices upsert failed (registerTokenForUser)", e)
+                }
+            }
+        }
+
+        /**
+         * 기존 onNewToken 기반 방식
+         */
+        fun registerCurrentTokenToSupabase(token: String) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val session = SupabaseManager.client.auth.currentSessionOrNull()
+                    val userId = session?.user?.id ?: return@launch
+
+                    Log.d(TAG, "registerCurrentTokenToSupabase: $token (userId=$userId)")
+
+                    SupabaseManager.client.postgrest["user_devices"].upsert(
+                        mapOf(
+                            "user_id" to userId.toString(),
+                            "fcm_token" to token
+                        )
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "registerCurrentTokenToSupabase failed", e)
                 }
             }
         }
     }
 
     /**
-     * 토큰이 새로 발급되거나 갱신될 때마다 호출되는 콜백
+     * FCM 토큰 갱신 시 자동 호출
      */
     override fun onNewToken(token: String) {
         super.onNewToken(token)
@@ -51,18 +71,17 @@ class QuietReviewFirebaseMessagingService : FirebaseMessagingService() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val session =
-                    SupabaseManager.client.auth.currentSessionOrNull() ?: return@launch
-                val userId = session.user?.id?.toString() ?: return@launch
+                val session = SupabaseManager.client.auth.currentSessionOrNull()
+                val userId = session?.user?.id ?: return@launch
 
                 SupabaseManager.client.postgrest["user_devices"].upsert(
                     mapOf(
-                        "user_id" to userId,
+                        "user_id" to userId.toString(),
                         "fcm_token" to token
                     )
                 )
 
-                Log.d(TAG, "user_devices upsert success (onNewToken): $userId")
+                Log.d(TAG, "user_devices upsert success (onNewToken)")
             } catch (e: Exception) {
                 Log.e(TAG, "user_devices upsert failed (onNewToken)", e)
             }
@@ -70,7 +89,7 @@ class QuietReviewFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     /**
-     * Edge Function → FCM → 단말로 온 알림 처리
+     * 메시지 수신
      */
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
@@ -78,7 +97,6 @@ class QuietReviewFirebaseMessagingService : FirebaseMessagingService() {
         val data = remoteMessage.data
         Log.d(TAG, "onMessageReceived data: $data")
 
-        // Edge Function에서 data에 넣어주는 키 이름에 맞춰서 파싱
         val review = ReviewDto(
             id = data["review_id"]?.toIntOrNull() ?: 0,
             kakaoPlaceId = data["kakao_place_id"] ?: "",
@@ -91,20 +109,9 @@ class QuietReviewFirebaseMessagingService : FirebaseMessagingService() {
             amenities = null
         )
 
-        // 기존에 있던 알림 헬퍼 재사용
         NotificationHelper.showNewReviewNotification(
             context = applicationContext,
             review = review
         )
-
-        // 알림 히스토리 화면에 보여주고 싶으면 기록도 같이 남김
-        //NotificationHistoryManager.addNotification(
-            //context = applicationContext,
-            //placeId = review.kakaoPlaceId,
-            //placeName = data["place_name"] ?: "조용한 장소",
-            //reviewText = review.text ?: "",
-            //noiseLevelDb = review.noiseLevelDb,
-            //createdAt = review.createdAt ?: ""
-        //)
     }
 }

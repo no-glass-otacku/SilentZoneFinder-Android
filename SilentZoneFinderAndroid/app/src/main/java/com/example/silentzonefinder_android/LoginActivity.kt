@@ -11,10 +11,13 @@ import io.github.jan.supabase.exceptions.HttpRequestException
 import io.github.jan.supabase.exceptions.RestException
 import kotlinx.coroutines.launch
 import java.util.regex.Pattern
+import com.google.firebase.messaging.FirebaseMessaging
 import com.example.silentzonefinder_android.notifications.QuietReviewFirebaseMessagingService
 
 class LoginActivity : AppCompatActivity() {
+
     private lateinit var binding: ActivityLoginBinding
+
     private val supabase: io.github.jan.supabase.SupabaseClient? by lazy {
         try {
             SupabaseManager.client
@@ -37,7 +40,7 @@ class LoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         try {
             binding = ActivityLoginBinding.inflate(layoutInflater)
             setContentView(binding.root)
@@ -45,29 +48,26 @@ class LoginActivity : AppCompatActivity() {
             android.util.Log.e("LoginActivity", "레이아웃 바인딩 실패", e)
             throw e
         }
-        
-        // Supabase 초기화는 필요할 때만 수행 (onCreate에서는 초기화하지 않음)
-        // 이렇게 하면 onCreate에서 크래시가 발생하지 않음
 
         binding.btnSignUp.setOnClickListener {
             val email = binding.inputEmail.text.toString().trim()
             val password = binding.inputPassword.text.toString()
-            
+
             if (!validateInput(email, password)) {
                 return@setOnClickListener
             }
-            
+
             lifecycleScope.launch { signUp(email, password) }
         }
 
         binding.btnLogin.setOnClickListener {
             val email = binding.inputEmail.text.toString().trim()
             val password = binding.inputPassword.text.toString()
-            
+
             if (!validateInput(email, password)) {
                 return@setOnClickListener
             }
-            
+
             lifecycleScope.launch { login(email, password) }
         }
     }
@@ -101,24 +101,23 @@ class LoginActivity : AppCompatActivity() {
             Toast.makeText(this, "Supabase 연결이 설정되지 않았습니다.", Toast.LENGTH_SHORT).show()
             return
         }
-        
+
         try {
             android.util.Log.d("LoginActivity", "회원가입 시도: $email")
             client.auth.signUpWith(Email) {
                 this.email = email
                 this.password = password
             }
-            
+
             android.util.Log.d("LoginActivity", "회원가입 성공")
-            // Supabase 기본 설정에서는 이메일 인증이 필요하므로 안내 메시지 표시
             Toast.makeText(this, "회원가입 완료! 이메일 인증이 필요합니다.", Toast.LENGTH_LONG).show()
         } catch (e: HttpRequestException) {
             val errorMessage = when {
-                e.message?.contains("400") == true || e.message?.contains("Bad Request") == true -> 
+                e.message?.contains("400") == true || e.message?.contains("Bad Request") == true ->
                     "잘못된 요청입니다. 입력 정보를 확인해주세요."
-                e.message?.contains("409") == true || e.message?.contains("Conflict") == true -> 
+                e.message?.contains("409") == true || e.message?.contains("Conflict") == true ->
                     "이미 존재하는 이메일입니다."
-                e.message?.contains("422") == true || e.message?.contains("Unprocessable") == true -> 
+                e.message?.contains("422") == true || e.message?.contains("Unprocessable") == true ->
                     "입력 정보가 올바르지 않습니다."
                 else -> "회원가입에 실패했습니다: ${e.message ?: "알 수 없는 오류"}"
             }
@@ -127,13 +126,14 @@ class LoginActivity : AppCompatActivity() {
             Toast.makeText(this, "서버 오류가 발생했습니다: ${e.message ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             val errorMsg = e.message ?: "알 수 없는 오류"
-            when {
-                errorMsg.contains("email") && errorMsg.contains("already") -> 
+            val msg = when {
+                errorMsg.contains("email") && errorMsg.contains("already") ->
                     "이미 존재하는 이메일입니다."
-                errorMsg.contains("password") -> 
+                errorMsg.contains("password") ->
                     "비밀번호가 올바르지 않습니다."
                 else -> "회원가입에 실패했습니다: $errorMsg"
-            }.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -142,28 +142,45 @@ class LoginActivity : AppCompatActivity() {
             Toast.makeText(this, "Supabase 연결이 설정되지 않았습니다.", Toast.LENGTH_SHORT).show()
             return
         }
-        
+
         try {
             android.util.Log.d("LoginActivity", "로그인 시도: $email")
             client.auth.signInWith(Email) {
                 this.email = email
                 this.password = password
             }
-            
+
             android.util.Log.d("LoginActivity", "로그인 성공")
             Toast.makeText(this, "로그인 성공!", Toast.LENGTH_SHORT).show()
 
-            // 로그인 성공 후 FCM 토큰을 Supabase(user_devices)에 동기화
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+            // 1) 로그인 직후 세션에서 userId 가져오기
+            val session = client.auth.currentSessionOrNull()
+            val userId = session?.user?.id?.toString()
+
+            if (userId == null) {
+                android.util.Log.e("LoginActivity", "로그인 성공했는데 session/userId 없음")
+                val intent = android.content.Intent(this, MainActivity::class.java)
+                startActivity(intent)
+                finish()
+                return
+            }
+
+            // 2) 현재 FCM 토큰을 가져와서 user_devices 에 upsert
+            FirebaseMessaging.getInstance().token
                 .addOnCompleteListener { task ->
                     if (task.isSuccessful) {
                         val token = task.result
-                        QuietReviewFirebaseMessagingService.registerCurrentTokenToSupabase(token)
+                        android.util.Log.d("LoginActivity", "FCM token after login = $token")
+                        QuietReviewFirebaseMessagingService.registerTokenForUser(userId, token)
                     } else {
-                        android.util.Log.e("LoginActivity", "FCM token fetch failed", task.exception)
+                        android.util.Log.e(
+                            "LoginActivity",
+                            "FCM token fetch failed",
+                            task.exception
+                        )
                     }
 
-                    // 토큰 등록이 실패하더라도 앱 흐름은 계속 진행
+                    // 3) 토큰 등록 결과와 상관없이 메인 화면으로 이동
                     val intent = android.content.Intent(this, MainActivity::class.java)
                     startActivity(intent)
                     finish()
@@ -173,13 +190,13 @@ class LoginActivity : AppCompatActivity() {
             android.util.Log.e("LoginActivity", "로그인 실패 (HttpRequestException)", e)
             android.util.Log.e("LoginActivity", "오류 메시지: ${e.message}")
             android.util.Log.e("LoginActivity", "오류 스택: ${e.stackTraceToString()}")
-            
+
             val errorMessage = when {
-                e.message?.contains("400") == true || e.message?.contains("Bad Request") == true -> 
+                e.message?.contains("400") == true || e.message?.contains("Bad Request") == true ->
                     "이메일 또는 비밀번호가 올바르지 않습니다."
-                e.message?.contains("401") == true || e.message?.contains("Unauthorized") == true -> 
+                e.message?.contains("401") == true || e.message?.contains("Unauthorized") == true ->
                     "인증에 실패했습니다. 이메일과 비밀번호를 확인해주세요."
-                e.message?.contains("404") == true || e.message?.contains("Not Found") == true -> 
+                e.message?.contains("404") == true || e.message?.contains("Not Found") == true ->
                     "사용자를 찾을 수 없습니다."
                 e.message?.contains("Email not confirmed") == true || e.message?.contains("email_not_confirmed") == true ->
                     "이메일 인증이 필요합니다. 이메일을 확인해주세요."
@@ -195,14 +212,15 @@ class LoginActivity : AppCompatActivity() {
             android.util.Log.e("LoginActivity", "오류 타입: ${e.javaClass.simpleName}")
             android.util.Log.e("LoginActivity", "오류 메시지: ${e.message}")
             android.util.Log.e("LoginActivity", "오류 스택: ${e.stackTraceToString()}")
-            
+
             val errorMsg = e.message ?: "알 수 없는 오류"
             val finalMessage = when {
-                errorMsg.contains("Invalid login") || (errorMsg.contains("email") && errorMsg.contains("password")) -> 
+                errorMsg.contains("Invalid login") ||
+                        (errorMsg.contains("email") && errorMsg.contains("password")) ->
                     "이메일 또는 비밀번호가 올바르지 않습니다."
                 errorMsg.contains("Email not confirmed") || errorMsg.contains("email_not_confirmed") ->
                     "이메일 인증이 필요합니다. 이메일을 확인해주세요."
-                errorMsg.contains("User not found") -> 
+                errorMsg.contains("User not found") ->
                     "사용자를 찾을 수 없습니다."
                 else -> "로그인에 실패했습니다: $errorMsg"
             }
@@ -210,4 +228,3 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 }
-
