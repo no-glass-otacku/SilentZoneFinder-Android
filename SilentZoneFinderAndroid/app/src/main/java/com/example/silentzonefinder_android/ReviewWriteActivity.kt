@@ -34,6 +34,8 @@ import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.util.UUID
@@ -657,28 +659,46 @@ class ReviewWriteActivity : AppCompatActivity() {
             return localLat to localLng
         }
 
-        return try {
-            val existingPlace = SupabaseManager.client.postgrest["places"]
-                .select {
-                    filter { eq("kakao_place_id", kakaoPlaceId) }
+        // 재시도 로직 추가 (최대 3번 시도)
+        var lastException: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                val existingPlace = SupabaseManager.client.postgrest["places"]
+                    .select {
+                        filter { eq("kakao_place_id", kakaoPlaceId) }
+                    }
+                    .decodeList<PlaceDto>()
+                    .firstOrNull()
+
+                val resolvedLat = existingPlace?.lat
+                val resolvedLng = existingPlace?.lng
+
+                if (resolvedLat != null && resolvedLng != null) {
+                    lat = resolvedLat
+                    lng = resolvedLng
+                    return resolvedLat to resolvedLng
+                } else {
+                    // 좌표가 없으면 null 반환
+                    return null
                 }
-                .decodeList<PlaceDto>()
-                .firstOrNull()
-
-            val resolvedLat = existingPlace?.lat
-            val resolvedLng = existingPlace?.lng
-
-            if (resolvedLat != null && resolvedLng != null) {
-                lat = resolvedLat
-                lng = resolvedLng
-                resolvedLat to resolvedLng
-            } else {
-                null
+            } catch (e: HttpRequestTimeoutException) {
+                lastException = e
+                Log.w(TAG, "Timeout resolving place coordinates (attempt ${attempt + 1}/3): ${e.message}")
+                if (attempt < 2) {
+                    // 마지막 시도가 아니면 잠시 대기 후 재시도
+                    delay(1000L * (attempt + 1)) // 1초, 2초, 3초 대기
+                }
+            } catch (e: Exception) {
+                lastException = e
+                Log.e(TAG, "Failed to resolve place coordinates (attempt ${attempt + 1}/3)", e)
+                // 타임아웃이 아닌 다른 에러는 즉시 반환
+                return null
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to resolve place coordinates", e)
-            null
         }
+        
+        // 모든 재시도 실패
+        Log.e(TAG, "Failed to resolve place coordinates after 3 attempts", lastException)
+        return null
     }
 
     @Serializable
@@ -780,9 +800,11 @@ class ReviewWriteActivity : AppCompatActivity() {
                 val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
                     requestMethod = "POST"
                     setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    // Supabase Edge Function은 Authorization 헤더 필요
+                    setRequestProperty("Authorization", "Bearer ${BuildConfig.SUPABASE_ANON_KEY}")
+                    connectTimeout = 15000
+                    readTimeout = 15000
                     doOutput = true
-                    // 필요하면 Authorization 헤더도 추가 가능
-                    // setRequestProperty("Authorization", "Bearer ${BuildConfig.SUPABASE_ANON_KEY}")
                 }
 
                 val body = """{"review_id": $reviewId}"""
@@ -791,12 +813,15 @@ class ReviewWriteActivity : AppCompatActivity() {
                 }
 
                 val code = conn.responseCode
-                Log.d(TAG, "notifyQuietReview response code = $code")
-
-                // 응답 바디는 필요 없으면 버려도 됨
-                try {
-                    conn.inputStream?.close()
-                } catch (_: Exception) { }
+                
+                // 응답 바디 읽기
+                val responseBody = try {
+                    conn.inputStream.bufferedReader().use { it.readText() }
+                } catch (e: Exception) {
+                    conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "no response body"
+                }
+                
+                Log.d(TAG, "notifyQuietReview response code = $code, body = $responseBody")
 
                 conn.disconnect()
             } catch (e: Exception) {

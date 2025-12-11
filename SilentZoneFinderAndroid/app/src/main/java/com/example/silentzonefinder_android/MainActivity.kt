@@ -165,7 +165,8 @@ class MainActivity : AppCompatActivity() {
         setupMyLocationButton()
         setupWeatherWidget()
 
-        //ReviewNotificationWatcher(this, SupabaseManager.client).start()
+        // ReviewNotificationWatcher 시작 (리뷰 생성 시 즉시 알림)
+        ReviewNotificationWatcher(this, SupabaseManager.client).start()
     }
 
     override fun onResume() {

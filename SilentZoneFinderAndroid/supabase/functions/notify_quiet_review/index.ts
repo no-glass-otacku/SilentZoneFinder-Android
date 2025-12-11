@@ -12,6 +12,22 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 const serviceAccount = JSON.parse(SERVICE_ACCOUNT_JSON);
 const FCM_PROJECT_ID: string = serviceAccount.project_id;
 
+// FCM v1 공통 메시지 베이스 (notification + android/priority 설정 등 필요 시 확장)
+const baseMessage = {
+  notification: {
+    title: "Quiet review update",
+    body: "A new quiet review was posted.",
+  },
+  android: {
+    priority: "high",
+  },
+  apns: {
+    headers: {
+      "apns-priority": "10",
+    },
+  },
+};
+
 // reviews 레코드 타입
 interface ReviewRecord {
   id: number;
@@ -21,6 +37,13 @@ interface ReviewRecord {
   text: string | null;
   noise_level_db: number;
   created_at: string;
+}
+
+// places 레코드 타입 (알림에 장소명/주소 전달용)
+interface PlaceRecord {
+  kakao_place_id: string;
+  name: string | null;
+  address: string | null;
 }
 
 // FCM HTTP v1용 access token 발급
@@ -69,6 +92,8 @@ async function sendFcmToTokens(
   tokens: string[],
   record: ReviewRecord,
   accessToken: string,
+  placeName: string,
+  placeAddress: string,
 ) {
   const url =
     `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`;
@@ -92,6 +117,9 @@ async function sendFcmToTokens(
         data: {
           review_id: String(record.id),
           kakao_place_id: record.kakao_place_id,
+          place_name: placeName,
+          place_address: placeAddress,
+          noise_level_db: String(record.noise_level_db),
         },
       },
     };
@@ -166,6 +194,26 @@ serve(async (req: Request) => {
   if (!record.kakao_place_id || typeof record.noise_level_db !== "number") {
     console.error("invalid record payload", record);
     return new Response("invalid record", { status: 400 });
+  }
+
+  // 장소 정보 조회 (알림에 표시할 이름/주소)
+  let placeName = "";
+  let placeAddress = "";
+  try {
+    const { data: placeRow, error: placeErr } = await supabase
+      .from("places")
+      .select("kakao_place_id, name, address")
+      .eq("kakao_place_id", record.kakao_place_id)
+      .maybeSingle<PlaceRecord>();
+
+    if (placeErr) {
+      console.error("place select error", placeErr);
+    } else if (placeRow) {
+      placeName = placeRow.name ?? "";
+      placeAddress = placeRow.address ?? "";
+    }
+  } catch (e) {
+    console.error("place query failed", e);
   }
 
   console.log(
@@ -258,7 +306,7 @@ serve(async (req: Request) => {
 
   try {
     const accessToken = await getAccessToken();
-    await sendFcmToTokens(tokens, record, accessToken);
+    await sendFcmToTokens(tokens, record, accessToken, placeName, placeAddress);
   } catch (e) {
     console.error("fcm error:", e);
     return new Response("fcm error", { status: 500 });

@@ -3,6 +3,9 @@ package com.example.silentzonefinder_android
 import android.app.Application
 import android.util.Log
 import com.example.silentzonefinder_android.utils.NotificationHelper   // 하나만 import
+import com.example.silentzonefinder_android.notifications.QuietReviewFirebaseMessagingService
+import com.google.firebase.messaging.FirebaseMessaging
+import io.github.jan.supabase.auth.auth
 import com.kakao.vectormap.KakaoMapSdk
 
 class MapApplication : Application() {
@@ -11,6 +14,7 @@ class MapApplication : Application() {
 
         // 앱 시작 시 알림 채널 두 개(새 리뷰 / 임계값) 미리 생성
         NotificationHelper.createNotificationChannels(this)
+        registerFcmTokenIfLoggedIn()
 
         try {
             val appKey = BuildConfig.KAKAO_NATIVE_APP_KEY
@@ -32,6 +36,28 @@ class MapApplication : Application() {
             Log.e("MapApplication", "카카오맵 SDK 초기화 실패", e)
             Log.e("MapApplication", "오류 타입: ${e.javaClass.simpleName}")
             Log.e("MapApplication", "오류 메시지: ${e.message}")
+        }
+    }
+
+    /**
+     * 이미 로그인된 상태라면 앱 시작 시 FCM 토큰을 Supabase user_devices에 업서트
+     */
+    private fun registerFcmTokenIfLoggedIn() {
+        try {
+            val session = SupabaseManager.client.auth.currentSessionOrNull() ?: return
+            val userId = session.user?.id ?: return
+
+            FirebaseMessaging.getInstance().token
+                .addOnCompleteListener { task ->
+                    if (!task.isSuccessful) {
+                        Log.w("MapApplication", "FCM token fetch failed: ${task.exception?.message}")
+                        return@addOnCompleteListener
+                    }
+                    val token = task.result ?: return@addOnCompleteListener
+                    QuietReviewFirebaseMessagingService.registerTokenForUser(userId, token)
+                }
+        } catch (e: Exception) {
+            Log.e("MapApplication", "registerFcmTokenIfLoggedIn failed", e)
         }
     }
 }

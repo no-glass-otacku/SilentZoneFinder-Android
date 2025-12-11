@@ -23,9 +23,9 @@ object NotificationHelper {
 
     /** 앱 시작 시 채널 3개를 한 번에 생성 (MapApplication에서 호출) */
     fun createNotificationChannels(context: Context) {
-        createChannelIfNeeded(context, CHANNEL_NEW_REVIEW, "새 리뷰 알림")
-        createChannelIfNeeded(context, CHANNEL_THRESHOLD_ALERT, "임계값 알림")
-        createChannelIfNeeded(context, CHANNEL_QUIET_ZONE, "조용한 장소 추천 알림")
+        createChannelIfNeeded(context, CHANNEL_NEW_REVIEW, "New Review Alert")
+        createChannelIfNeeded(context, CHANNEL_THRESHOLD_ALERT, "Threshold Alert")
+        createChannelIfNeeded(context, CHANNEL_QUIET_ZONE, "Quiet Place Alert")
     }
 
     // ================== 내부 공통 유틸 ==================
@@ -73,19 +73,19 @@ object NotificationHelper {
         context: Context,
         review: ReviewDto
     ) {
-        createChannelIfNeeded(context, CHANNEL_NEW_REVIEW, "새 리뷰 알림")
+        createChannelIfNeeded(context, CHANNEL_NEW_REVIEW, "New Review Alert")
 
         val placeName = review.placeName
         val placeAddress = review.placeAddress
         val title =
             if (!placeName.isNullOrBlank()) {
-                "$placeName — 새 조용한 리뷰가 등록됐어요"
+                "$placeName — New quiet review added"
             } else {
-                "새 리뷰가 등록됐어요"
+                "New review added"
             }
         val message =
             if (!review.text.isNullOrBlank()) review.text!!
-            else "소음 ${review.noiseLevelDb} dB 리뷰가 추가되었습니다."
+            else "Noise ${review.noiseLevelDb.toInt()} dB review has been added."
 
         val pendingIntent = buildPlaceDetailPendingIntent(context, review.kakaoPlaceId)
         val notificationId = UUID.randomUUID().toString()
@@ -129,11 +129,11 @@ object NotificationHelper {
         detectedDb: Double,
         kakaoPlaceId: String
     ) {
-        createChannelIfNeeded(context, CHANNEL_QUIET_ZONE, "조용한 장소 추천 알림")
+        createChannelIfNeeded(context, CHANNEL_QUIET_ZONE, "Quiet Place Alert")
 
-        val title = "지금 조용한 장소예요"
+        val title = "It's quiet now"
         val message =
-            "${placeName}이(가) 현재 약 ${detectedDb.toInt()} dB 로 비교적 조용합니다."
+            "$placeName is currently around ${detectedDb.toInt()} dB and relatively quiet."
 
         val pendingIntent = buildPlaceDetailPendingIntent(context, kakaoPlaceId)
         val notificationId = UUID.randomUUID().toString()
@@ -180,11 +180,11 @@ object NotificationHelper {
         thresholdDb: Double,
         detectedDb: Double
     ) {
-        createChannelIfNeeded(context, CHANNEL_THRESHOLD_ALERT, "임계값 알림")
+        createChannelIfNeeded(context, CHANNEL_THRESHOLD_ALERT, "Threshold Alert")
 
-        val title = "조용해졌어요"
+        val title = "It's quieter now"
         val message =
-            "${placeName}이(가) 임계값 ${thresholdDb.toInt()} dB 이하로 내려갔습니다 (${detectedDb.toInt()} dB 감지)."
+            "$placeName dropped below your threshold ${thresholdDb.toInt()} dB (detected ${detectedDb.toInt()} dB)."
 
         val pendingIntent = buildPlaceDetailPendingIntent(context, kakaoPlaceId)
         val notificationId = UUID.randomUUID().toString()
