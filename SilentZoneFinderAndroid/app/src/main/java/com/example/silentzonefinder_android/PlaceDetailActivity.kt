@@ -562,7 +562,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                             filter {
                                 eq("user_id", userId)
                                 eq("kakao_place_id", currentPlaceId)
-                                alertThresholdDb = alertThresholdDb   // ★ 추가
+                                //alertThresholdDb = alertThresholdDb   // ★ 추가
                             }
                         }
                     }
@@ -614,7 +614,9 @@ class PlaceDetailActivity : AppCompatActivity() {
                         SupabaseManager.client.postgrest["favorites"].insert(
                             FavoriteInsertDto(
                                 userId = userId,
-                                kakaoPlaceId = currentPlaceId
+                                kakaoPlaceId = currentPlaceId,
+                                alertThresholdDb = null
+
                             )
                         )
                     }
@@ -625,6 +627,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                         getString(R.string.place_detail_favorite_added),
                         Toast.LENGTH_SHORT
                     ).show()
+                    openNoiseThresholdSettings()
                     // 알림 테이블에도 ON 저장
                     withContext(Dispatchers.IO) {
                         SupabaseManager.client.postgrest["place_notifications"].upsert(
