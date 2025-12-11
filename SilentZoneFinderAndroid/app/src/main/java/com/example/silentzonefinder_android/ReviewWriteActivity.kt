@@ -193,8 +193,6 @@ class ReviewWriteActivity : AppCompatActivity() {
         } else {
             // 새 리뷰 모드: 소음 측정 시작
             checkAudioPermission()
-            // 개발 모드 설정
-            setupDevMode()
         }
         setupImageRecyclerView()
         setupImageUpload() //image button listener
@@ -830,29 +828,6 @@ class ReviewWriteActivity : AppCompatActivity() {
         }
     }
 
-
-    // 개발 모드 설정 (디버그 빌드에서만 활성화)
-    private fun setupDevMode() {
-        if (BuildConfig.DEBUG) {
-            binding.devModeContainer.visibility = View.VISIBLE
-            binding.btnUseDevDecibel.setOnClickListener {
-                val dbText = binding.etDevDecibel.text.toString().trim()
-                if (dbText.isNotEmpty()) {
-                    try {
-                        val dbValue = dbText.toInt().coerceIn(0, 120)
-                        finalMeasuredDb = dbValue
-                        switchToReviewWritingView(dbValue)
-                    } catch (e: NumberFormatException) {
-                        Toast.makeText(this, "올바른 숫자를 입력하세요 (0-120)", Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    Toast.makeText(this, "데시벨 값을 입력하세요", Toast.LENGTH_SHORT).show()
-                }
-            }
-        } else {
-            binding.devModeContainer.visibility = View.GONE
-        }
-    }
 
     // ✅ 이 어노테이션을 함수 위에 추가하여 권한 관련 경고를 무시하도록 합니다.
     @SuppressLint("MissingPermission")

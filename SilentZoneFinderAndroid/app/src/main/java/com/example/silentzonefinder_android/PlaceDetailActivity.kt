@@ -462,17 +462,16 @@ class PlaceDetailActivity : AppCompatActivity() {
                     val table = SupabaseManager.client.postgrest["place_notifications"]
 
                     if (newState) {
-                        // ★ 0-1) 즐겨찾기(favorites)에 임계값 포함해서 upsert
-                        SupabaseManager.client.postgrest["favorites"].upsert(
-                            FavoriteInsertDto(
-                                userId = userId,
-                                kakaoPlaceId = currentPlaceId,
-                                alertThresholdDb = 65.0  // 현재 메모리 값 사용
-                            )
-                        )
-
-                        // ★ 0-2) 즐겨찾기 상태도 true 로 맞춰주기 (UI 반영)
-                        isFavorite = true
+                        // 즐겨찾기가 없으면 알림 설정 불가 (이미 notificationButton에서 체크하지만 안전장치)
+                        if (!isFavorite) {
+                            Toast.makeText(
+                                this@PlaceDetailActivity,
+                                getString(R.string.place_detail_favorite_required_for_notification),
+                                Toast.LENGTH_LONG
+                            ).show()
+                            onComplete?.invoke(isNotificationOn)
+                            return@launch
+                        }
 
                         // 1) place_notifications row 존재 여부 확인
                         val existing = table.select {
@@ -610,6 +609,29 @@ class PlaceDetailActivity : AppCompatActivity() {
                             Log.d(TAG, "Profile check/creation failed, continuing with favorite", e)
                         }
 
+                        // places 테이블에 장소 정보 upsert (리뷰가 없어도 즐겨찾기 가능하도록)
+                        try {
+                            if (currentPlaceName.isNotEmpty() && currentLat != null && currentLng != null) {
+                                val placeData = PlaceInsertDto(
+                                    kakaoPlaceId = currentPlaceId,
+                                    name = currentPlaceName,
+                                    address = currentAddress,
+                                    lat = currentLat!!,
+                                    lng = currentLng!!
+                                )
+                                SupabaseManager.client.postgrest["places"]
+                                    .upsert(placeData) {
+                                        onConflict = "kakao_place_id"
+                                    }
+                                Log.d(TAG, "Place upserted successfully: $currentPlaceId")
+                            } else {
+                                Log.w(TAG, "Cannot upsert place: missing name or coordinates")
+                            }
+                        } catch (e: Exception) {
+                            // places 저장 실패해도 즐겨찾기 추가는 계속 진행
+                            Log.e(TAG, "Failed to upsert place, continuing with favorite", e)
+                        }
+
                         // 즐겨찾기 추가
                         SupabaseManager.client.postgrest["favorites"].insert(
                             FavoriteInsertDto(
@@ -621,23 +643,12 @@ class PlaceDetailActivity : AppCompatActivity() {
                         )
                     }
                     isFavorite = true
-                    isNotificationOn = true
+                    // 즐겨찾기와 알림은 구분되므로 알림은 자동으로 켜지 않음
                     Toast.makeText(
                         this@PlaceDetailActivity,
                         getString(R.string.place_detail_favorite_added),
                         Toast.LENGTH_SHORT
                     ).show()
-                    openNoiseThresholdSettings()
-                    // 알림 테이블에도 ON 저장
-                    withContext(Dispatchers.IO) {
-                        SupabaseManager.client.postgrest["place_notifications"].upsert(
-                            NotificationInsertDto(
-                                userId = userId,
-                                kakaoPlaceId = currentPlaceId,
-                                isEnabled = true
-                            )
-                        )
-                    }
                 }
                 updateFavoriteButtonIcon()
                 updateNotificationButtonIcon()
@@ -729,6 +740,15 @@ class PlaceDetailActivity : AppCompatActivity() {
         val id: String,
         val nickname: String? = null,
         @SerialName("avatar_url") val avatarUrl: String? = null
+    )
+
+    @Serializable
+    private data class PlaceInsertDto(
+        @SerialName("kakao_place_id") val kakaoPlaceId: String,
+        val name: String,
+        val address: String,
+        val lat: Double,
+        val lng: Double
     )
 
     companion object {
