@@ -2,7 +2,6 @@ package com.example.silentzonefinder_android.worker
 
 import android.content.Context
 import android.util.Log
-import android.content.SharedPreferences
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -83,20 +82,15 @@ class QuietZoneWorker(
         @SerialName("created_at") val createdAt: String
     )
 
+    @Serializable
+    private data class UserNotificationSettingsDto(
+        @SerialName("user_id") val userId: String,
+        @SerialName("quiet_recommendation_enabled") val quietRecommendationEnabled: Boolean
+    )
+
     override suspend fun doWork(): Result {
         return try {
-            if (!isNotificationEnabled()) {
-                Log.d(TAG, "Notification preference off, skipping work")
-                return Result.success()
-            }
-
-            // 알림 권한 확인
-            if (!PermissionHelper.hasNotificationPermission(applicationContext)) {
-                Log.d(TAG, "Notification permission not granted, skipping work")
-                return Result.success()
-            }
-
-            // 로그인 상태 확인
+            // 로그인 상태 확인 (알림 설정 확인을 위해 필요)
             val session = withContext(Dispatchers.IO) {
                 SupabaseManager.client.auth.currentSessionOrNull()
             }
@@ -109,6 +103,18 @@ class QuietZoneWorker(
             val userId = session.user?.id?.toString().orEmpty()
             if (userId.isEmpty()) {
                 Log.d(TAG, "User info missing in session, skipping work")
+                return Result.success()
+            }
+
+            // Supabase에서 알림 설정 확인
+            if (!isNotificationEnabled(userId)) {
+                Log.d(TAG, "Notification preference off, skipping work")
+                return Result.success()
+            }
+
+            // 알림 권한 확인
+            if (!PermissionHelper.hasNotificationPermission(applicationContext)) {
+                Log.d(TAG, "Notification permission not granted, skipping work")
                 return Result.success()
             }
 
@@ -242,7 +248,8 @@ class QuietZoneWorker(
                 }
             }
 
-            if (isNotificationEnabled()) {
+            // 알림 설정이 켜져있으면 다음 작업 스케줄링
+            if (isNotificationEnabled(userId)) {
                 schedule(applicationContext)
             }
             Result.success()
@@ -252,10 +259,23 @@ class QuietZoneWorker(
         }
     }
 
-    private fun isNotificationEnabled(): Boolean {
-        val prefs: SharedPreferences =
-            applicationContext.getSharedPreferences("notification_prefs", Context.MODE_PRIVATE)
-        return prefs.getBoolean("quiet_zone_notifications_enabled", false)
+    private suspend fun isNotificationEnabled(userId: String): Boolean {
+        return try {
+            val settings = withContext(Dispatchers.IO) {
+                SupabaseManager.client.postgrest["user_notification_settings"]
+                    .select {
+                        filter {
+                            eq("user_id", userId)
+                        }
+                        limit(1)
+                    }
+                    .decodeList<UserNotificationSettingsDto>()
+            }
+            settings.firstOrNull()?.quietRecommendationEnabled ?: false
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to check notification settings", e)
+            false
+        }
     }
 }
 

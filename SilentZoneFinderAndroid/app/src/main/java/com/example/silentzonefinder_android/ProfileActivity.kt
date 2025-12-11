@@ -238,15 +238,15 @@ class ProfileActivity : AppCompatActivity() {
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     return@setOnCheckedChangeListener
                 }
-                //scheduleQuietZoneWorker()
-                notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", true).apply()
+            }
+            // Supabase에 저장 (SharedPreferences 제거)
+            onGlobalQuietAlertToggled(isChecked)
+            
+            if (isChecked) {
                 Toast.makeText(this@ProfileActivity, "Quiet zone recommendation alerts enabled.", Toast.LENGTH_SHORT).show()
             } else {
-                //cancelQuietZoneWorker()
-                notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", false).apply()
                 Toast.makeText(this@ProfileActivity, "Quiet zone recommendation alerts disabled.", Toast.LENGTH_SHORT).show()
             }
-            onGlobalQuietAlertToggled(isChecked)
         }
 
         //val notificationsEnabled =
@@ -379,17 +379,6 @@ class ProfileActivity : AppCompatActivity() {
                 isProgrammaticChange = true
                 binding.switchQuietAlert.isChecked = enabled
                 isProgrammaticChange = false
-
-                // 로컬 Worker / SharedPreferences도 맞춰주고 싶으면
-                if (enabled) {
-                    notificationPrefs.edit()
-                        .putBoolean("quiet_zone_notifications_enabled", true)
-                        .apply()
-                } else {
-                    notificationPrefs.edit()
-                        .putBoolean("quiet_zone_notifications_enabled", false)
-                        .apply()
-                }
 
                 Log.d("ProfileActivity", "Global quiet alert loaded: $enabled")
             } catch (e: Exception) {

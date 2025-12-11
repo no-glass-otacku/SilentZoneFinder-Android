@@ -458,21 +458,21 @@ class PlaceDetailActivity : AppCompatActivity() {
             try {
                 val newState = !isNotificationOn
 
+                // 즐겨찾기가 없으면 알림 설정 불가 (이미 notificationButton에서 체크하지만 안전장치)
+                if (newState && !isFavorite) {
+                    Toast.makeText(
+                        this@PlaceDetailActivity,
+                        getString(R.string.place_detail_favorite_required_for_notification),
+                        Toast.LENGTH_LONG
+                    ).show()
+                    onComplete?.invoke(isNotificationOn)
+                    return@launch
+                }
+
                 withContext(Dispatchers.IO) {
                     val table = SupabaseManager.client.postgrest["place_notifications"]
 
                     if (newState) {
-                        // 즐겨찾기가 없으면 알림 설정 불가 (이미 notificationButton에서 체크하지만 안전장치)
-                        if (!isFavorite) {
-                            Toast.makeText(
-                                this@PlaceDetailActivity,
-                                getString(R.string.place_detail_favorite_required_for_notification),
-                                Toast.LENGTH_LONG
-                            ).show()
-                            onComplete?.invoke(isNotificationOn)
-                            return@launch
-                        }
-
                         // 1) place_notifications row 존재 여부 확인
                         val existing = table.select {
                             filter {
