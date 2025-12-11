@@ -36,10 +36,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.util.UUID
+import android.speech.RecognizerIntent
+import androidx.activity.result.ActivityResultLauncher
+import java.util.Locale
 
 private const val STATE_IMAGE_URIS = "state_image_uris"
 class NewReviewActivity : AppCompatActivity() {
     private lateinit var binding: ActivityNewReviewBinding
+    private lateinit var speechLauncher: ActivityResultLauncher<Intent>
     private val REQUEST_RECORD_AUDIO_PERMISSION = 200 // 녹음 권한 요청 코드
 
     private lateinit var audioRecord: AudioRecord
@@ -125,6 +129,22 @@ class NewReviewActivity : AppCompatActivity() {
         binding = ActivityNewReviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // STT Launcher 초기화
+        speechLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val data = result.data
+                val resultArrayList = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                if (!resultArrayList.isNullOrEmpty()) {
+                    val recognizedText = resultArrayList[0]
+                    val currentText = binding.etReview.text.toString()
+                    // 기존 텍스트가 있으면 한 칸 띄우고 붙이기
+                    val newText = if (currentText.isNotEmpty()) "$currentText $recognizedText" else recognizedText
+                    binding.etReview.setText(newText)
+                    binding.etReview.setSelection(newText.length) // 커서 이동
+                }
+            }
+        }
+
         //상태 복구 로직 (화면 회전 시 이미지 유지)
         if (savedInstanceState != null) {
             // 1. 저장된 URI 리스트를 가져옵니다.
@@ -176,6 +196,29 @@ class NewReviewActivity : AppCompatActivity() {
         setupImageRecyclerView()
         setupImageUpload() //image button listener
         setupSubmitButton()
+        setupVoiceInput()
+    }
+
+    private fun setupVoiceInput() {
+        binding.btnVoiceInput.setOnClickListener {
+            // Step 1: 측정 중이면 정지 (안전장치)
+            if (isMeasuring) {
+                stopMeasurement()
+            }
+
+            // Step 2: STT 실행
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.KOREA)
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "리뷰 내용을 말해주세요")
+            }
+
+            try {
+                speechLauncher.launch(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this, "이 기기는 음성 인식을 지원하지 않습니다.", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     //Activity가 파괴되기 전에 현재 선택된 이미지 URI 목록을 저장: 이미지 URI 목록을 화면 회전이나 백그라운드 강제 종료로부터 보호하기 위함

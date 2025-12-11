@@ -334,17 +334,37 @@
                 android:layout_height="wrap_content"
                 android:text="Your Review" />
 
-            <EditText
-                android:id="@+id/etReview"
+            <RelativeLayout
                 android:layout_width="match_parent"
-                android:layout_height="100dp"
-                android:hint="Share your experience..."
-                android:gravity="top"
-                android:padding="8dp"
-                android:background="@drawable/edittext_border"
-                android:inputType="textMultiLine"
-                android:maxLength="500"
-                android:layout_marginTop="4dp"/>
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp">
+
+                <EditText
+                    android:id="@+id/etReview"
+                    android:layout_width="match_parent"
+                    android:layout_height="100dp"
+                    android:hint="Share your experience..."
+                    android:gravity="top"
+                    android:paddingStart="8dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="60dp"
+                    android:paddingBottom="8dp"
+                    android:background="@drawable/edittext_border"
+                    android:inputType="textMultiLine"
+                    android:maxLength="500" />
+
+                <ImageButton
+                    android:id="@+id/btnVoiceInput"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_alignBottom="@id/etReview"
+                    android:layout_alignParentEnd="true"
+                    android:layout_margin="4dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_mic"
+                    android:contentDescription="Voice Input"
+                    app:tint="@color/grey_dark" />
+            </RelativeLayout>
 
             <TextView
                 android:layout_width="wrap_content"
