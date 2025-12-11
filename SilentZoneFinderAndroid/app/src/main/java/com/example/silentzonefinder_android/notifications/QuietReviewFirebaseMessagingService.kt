@@ -102,6 +102,8 @@ class QuietReviewFirebaseMessagingService : FirebaseMessagingService() {
             id = data["review_id"]?.toIntOrNull() ?: 0,
             kakaoPlaceId = data["kakao_place_id"] ?: "",
             rating = data["rating"]?.toIntOrNull() ?: 0,
+            placeName = data["place_name"],
+            placeAddress = data["place_address"],
             text = data["text"],
             images = null,
             noiseLevelDb = data["noise_level_db"]?.toDoubleOrNull() ?: 0.0,

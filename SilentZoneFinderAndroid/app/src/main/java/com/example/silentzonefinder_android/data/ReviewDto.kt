@@ -8,6 +8,8 @@ data class ReviewDto(
     val id: Int,
     @SerialName("kakao_place_id") val kakaoPlaceId: String,
     val rating: Int,
+    val placeName: String? = null,
+    val placeAddress: String? = null,
     val text: String? = null,
     val images: List<String>? = null,
     @SerialName("noise_level_db") val noiseLevelDb: Double,

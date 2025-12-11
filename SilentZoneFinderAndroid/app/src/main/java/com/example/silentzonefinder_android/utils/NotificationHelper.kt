@@ -75,7 +75,14 @@ object NotificationHelper {
     ) {
         createChannelIfNeeded(context, CHANNEL_NEW_REVIEW, "새 리뷰 알림")
 
-        val title = "새 리뷰가 등록됐어요"
+        val placeName = review.placeName
+        val placeAddress = review.placeAddress
+        val title =
+            if (!placeName.isNullOrBlank()) {
+                "$placeName — 새 조용한 리뷰가 등록됐어요"
+            } else {
+                "새 리뷰가 등록됐어요"
+            }
         val message =
             if (!review.text.isNullOrBlank()) review.text!!
             else "소음 ${review.noiseLevelDb} dB 리뷰가 추가되었습니다."
@@ -103,7 +110,7 @@ object NotificationHelper {
                 type = NotificationType.NEW_REVIEW,
                 title = title,
                 message = message,
-                placeName = null,                    // ReviewDto에는 placeName 없음
+                placeName = placeName,                    // ReviewDto에는 placeName 없음
                 placeId = review.kakaoPlaceId,
                 timestamp = System.currentTimeMillis(),
                 thresholdDb = null,
