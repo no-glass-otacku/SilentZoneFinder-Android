@@ -39,9 +39,6 @@
             android:name=".NewReviewActivity"
             android:exported="false" />
         <activity
-            android:name=".EditReviewActivity"
-            android:exported="false" />
-        <activity
             android:name=".MyFavoritesActivity"
             android:exported="false" />
         <activity
