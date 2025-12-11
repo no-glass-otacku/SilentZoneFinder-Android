@@ -51,9 +51,6 @@
             android:name=".NoiseThresholdActivity"
             android:exported="false" />
         <activity
-            android:name=".SettingsActivity"
-            android:exported="false" />
-        <activity
             android:name=".ContactSupportActivity"
             android:exported="false" />
         <activity

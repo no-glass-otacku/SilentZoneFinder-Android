@@ -251,10 +251,6 @@ class ProfileActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
-        rowSettings.setOnClickListener {
-            val intent = Intent(this@ProfileActivity, SettingsActivity::class.java)
-            startActivity(intent)
-        }
 
         rowContactSupport.setOnClickListener {
             val intent = Intent(this@ProfileActivity, ContactSupportActivity::class.java)
