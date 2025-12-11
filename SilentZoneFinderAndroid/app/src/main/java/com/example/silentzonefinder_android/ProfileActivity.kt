@@ -111,7 +111,7 @@ class ProfileActivity : AppCompatActivity() {
         binding.loggedInLayout.visibility = View.VISIBLE
         binding.textUserName.text = name
         binding.textUserEmail.text = email
-        binding.textReviewCount.text = "12"
+
 
     }
 
@@ -251,10 +251,6 @@ class ProfileActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
-        rowSettings.setOnClickListener {
-            val intent = Intent(this@ProfileActivity, SettingsActivity::class.java)
-            startActivity(intent)
-        }
 
         rowContactSupport.setOnClickListener {
             val intent = Intent(this@ProfileActivity, ContactSupportActivity::class.java)
@@ -434,7 +430,7 @@ class ProfileActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                val fileName = "avatar_${'$'}{System.currentTimeMillis()}.jpg"
+                val fileName = "avatar_${System.currentTimeMillis()}.jpg"
 
                 client.storage.from("avatars").upload(
                     path = fileName,

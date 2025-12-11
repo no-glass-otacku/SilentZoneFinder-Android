@@ -174,29 +174,7 @@
                                 android:visibility="gone" />
                         </LinearLayout>
 
-                        <!-- 오른쪽: 리뷰 카운트 -->
-                        <LinearLayout
-                            android:orientation="vertical"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:gravity="center_horizontal">
 
-                            <TextView
-                                android:id="@+id/textReviewCount"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="12"
-                                android:textStyle="bold"
-                                android:textSize="18sp"
-                                android:textColor="@color/blue"
-                                />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Reviews"
-                                android:textSize="12sp"/>
-                        </LinearLayout>
 
                     </LinearLayout>
 
@@ -289,20 +267,7 @@
                         android:layout_height="1dp"
                         android:background="@color/light_grey"/>
 
-                    <LinearLayout
-                        android:id="@+id/rowSettings"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:gravity="center_vertical"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp">
 
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Settings"
-                            android:textSize="14sp"/>
-                    </LinearLayout>
 
                     <View
                         android:layout_width="match_parent"
