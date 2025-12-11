@@ -111,7 +111,7 @@ class ProfileActivity : AppCompatActivity() {
         binding.loggedInLayout.visibility = View.VISIBLE
         binding.textUserName.text = name
         binding.textUserEmail.text = email
-        binding.textReviewCount.text = "12"
+
 
     }
 
