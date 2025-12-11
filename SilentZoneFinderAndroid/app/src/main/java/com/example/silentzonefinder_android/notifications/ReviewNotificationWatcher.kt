@@ -4,6 +4,7 @@ import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.realtime.channel
 import android.content.Context
 import com.example.silentzonefinder_android.data.ReviewDto
+import com.example.silentzonefinder_android.utils.NotificationHelper
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.RealtimeChannel

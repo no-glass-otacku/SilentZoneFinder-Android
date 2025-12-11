@@ -189,12 +189,11 @@ class QuietZoneWorker(
                     val threshold = favorite.alertThresholdDb ?: continue
                     if (avgNoise <= threshold) {
                         NotificationHelper.showThresholdAlertNotification(
-                            applicationContext,
-                            place.name ?: "알 수 없는 장소",
-                            place.address ?: "",
-                            threshold,
-                            avgNoise,
-                            favorite.kakaoPlaceId
+                            context = applicationContext,
+                            kakaoPlaceId = favorite.kakaoPlaceId,
+                            placeName = place.name ?: "알 수 없는 장소",
+                            thresholdDb = threshold,
+                            detectedDb = avgNoise
                         )
                         Log.d(TAG, "Sent threshold alert for ${place.name}")
                     }

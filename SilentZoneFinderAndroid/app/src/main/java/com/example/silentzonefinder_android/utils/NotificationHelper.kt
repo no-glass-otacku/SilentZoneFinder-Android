@@ -1,5 +1,6 @@
 package com.example.silentzonefinder_android.utils
 
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -11,148 +12,195 @@ import androidx.core.app.NotificationManagerCompat
 import com.example.silentzonefinder_android.MainActivity
 import com.example.silentzonefinder_android.PlaceDetailActivity
 import com.example.silentzonefinder_android.R
+import com.example.silentzonefinder_android.data.ReviewDto
 import java.util.UUID
 
 object NotificationHelper {
-    private const val CHANNEL_ID_QUIET_ZONE = "quiet_zone_recommendation"
-    private const val CHANNEL_ID_THRESHOLD_ALERT = "noise_threshold_alert"
-    private const val CHANNEL_NAME_QUIET_ZONE = "조용한 장소 추천"
-    private const val CHANNEL_NAME_THRESHOLD_ALERT = "소음 임계값 알림"
 
+    private const val CHANNEL_NEW_REVIEW = "channel_new_review"
+    private const val CHANNEL_THRESHOLD_ALERT = "channel_threshold_alert"
+    private const val CHANNEL_QUIET_ZONE = "channel_quiet_zone"
+
+    /** 앱 시작 시 채널 3개를 한 번에 생성 (MapApplication에서 호출) */
     fun createNotificationChannels(context: Context) {
+        createChannelIfNeeded(context, CHANNEL_NEW_REVIEW, "새 리뷰 알림")
+        createChannelIfNeeded(context, CHANNEL_THRESHOLD_ALERT, "임계값 알림")
+        createChannelIfNeeded(context, CHANNEL_QUIET_ZONE, "조용한 장소 추천 알림")
+    }
+
+    // ================== 내부 공통 유틸 ==================
+
+    private fun createChannelIfNeeded(context: Context, channelId: String, channelName: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationManager =
+            val manager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-            // 조용한 장소 추천 채널
-            val quietZoneChannel = NotificationChannel(
-                CHANNEL_ID_QUIET_ZONE,
-                CHANNEL_NAME_QUIET_ZONE,
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "주변 조용한 장소 추천 알림"
-                enableVibration(true)
-                enableLights(true)
+            val existing = manager.getNotificationChannel(channelId)
+            if (existing == null) {
+                val channel = NotificationChannel(
+                    channelId,
+                    channelName,
+                    NotificationManager.IMPORTANCE_HIGH
+                )
+                manager.createNotificationChannel(channel)
             }
-
-            // 소음 임계값 알림 채널
-            val thresholdAlertChannel = NotificationChannel(
-                CHANNEL_ID_THRESHOLD_ALERT,
-                CHANNEL_NAME_THRESHOLD_ALERT,
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "설정한 소음 임계값 초과 시 알림"
-                enableVibration(true)
-                enableLights(true)
-            }
-
-            notificationManager.createNotificationChannel(quietZoneChannel)
-            notificationManager.createNotificationChannel(thresholdAlertChannel)
         }
     }
 
+    private fun buildPlaceDetailPendingIntent(
+        context: Context,
+        kakaoPlaceId: String?
+    ): PendingIntent {
+        val intent = if (kakaoPlaceId.isNullOrBlank()) {
+            Intent(context, MainActivity::class.java)
+        } else {
+            Intent(context, PlaceDetailActivity::class.java).apply {
+                putExtra("kakao_place_id", kakaoPlaceId)
+            }
+        }
+
+        return PendingIntent.getActivity(
+            context,
+            (kakaoPlaceId ?: "main").hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    // ================== 1) 새 리뷰 알림 ==================
+
+    @SuppressLint("MissingPermission")
+    fun showNewReviewNotification(
+        context: Context,
+        review: ReviewDto
+    ) {
+        createChannelIfNeeded(context, CHANNEL_NEW_REVIEW, "새 리뷰 알림")
+
+        val title = "새 리뷰가 등록됐어요"
+        val message =
+            if (!review.text.isNullOrBlank()) review.text!!
+            else "소음 ${review.noiseLevelDb} dB 리뷰가 추가되었습니다."
+
+        val pendingIntent = buildPlaceDetailPendingIntent(context, review.kakaoPlaceId)
+        val notificationId = UUID.randomUUID().toString()
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_NEW_REVIEW)
+            .setSmallIcon(R.drawable.ic_notifications)  // 프로젝트에 존재하는 아이콘으로 유지
+            .setContentTitle(title)
+            .setContentText(message)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+
+        NotificationManagerCompat.from(context)
+            .notify(notificationId.hashCode(), notification)
+
+        // 히스토리 저장
+        NotificationHistoryManager.addHistoryItem(
+            context,
+            NotificationHistoryItem(
+                id = notificationId,
+                type = NotificationType.NEW_REVIEW,
+                title = title,
+                message = message,
+                placeName = null,                    // ReviewDto에는 placeName 없음
+                placeId = review.kakaoPlaceId,
+                timestamp = System.currentTimeMillis(),
+                thresholdDb = null,
+                detectedDb = review.noiseLevelDb
+            )
+        )
+    }
+
+    // ================== 2) 조용한 장소 추천 알림 ==================
+
+    @SuppressLint("MissingPermission")
     fun showQuietZoneNotification(
         context: Context,
         placeName: String,
         placeAddress: String,
-        noiseLevelDb: Double,
+        detectedDb: Double,
         kakaoPlaceId: String
     ) {
-        val intent = Intent(context, PlaceDetailActivity::class.java).apply {
-            putExtra("kakao_place_id", kakaoPlaceId)
-            putExtra("place_name", placeName)
-            putExtra("address", placeAddress)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
+        createChannelIfNeeded(context, CHANNEL_QUIET_ZONE, "조용한 장소 추천 알림")
 
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            kakaoPlaceId.hashCode(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val title = "지금 조용한 장소예요"
+        val message =
+            "${placeName}이(가) 현재 약 ${detectedDb.toInt()} dB 로 비교적 조용합니다."
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID_QUIET_ZONE)
+        val pendingIntent = buildPlaceDetailPendingIntent(context, kakaoPlaceId)
+        val notificationId = UUID.randomUUID().toString()
+
+        val bigText =
+            if (placeAddress.isNotBlank()) "$message\n$placeAddress" else message
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_QUIET_ZONE)
             .setSmallIcon(R.drawable.ic_notifications)
-            .setContentTitle("조용한 장소 발견!")
-            .setContentText("${placeName}이 조용해졌습니다 (${noiseLevelDb.toInt()} dB) - 공부하기 좋은 시간이에요!")
-            .setStyle(
-                NotificationCompat.BigTextStyle()
-                    .bigText("${placeName}이 조용해졌습니다 (${noiseLevelDb.toInt()} dB) - 공부하기 좋은 시간이에요!")
-            )
-            .setContentIntent(pendingIntent)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
-        NotificationManagerCompat.from(context).notify(
-            kakaoPlaceId.hashCode(),
-            notification
-        )
+        NotificationManagerCompat.from(context)
+            .notify(notificationId.hashCode(), notification)
 
-        // 알림 히스토리에 저장
-        NotificationHistoryManager.addNotification(
+        NotificationHistoryManager.addHistoryItem(
             context,
             NotificationHistoryItem(
-                id = UUID.randomUUID().toString(),
-                type = NotificationType.QUIET_ZONE_RECOMMENDATION,
-                title = "조용한 장소 발견!",
-                message = "${placeName}이 조용해졌습니다 (${noiseLevelDb.toInt()} dB) - 공부하기 좋은 시간이에요!",
+                id = notificationId,
+                type = NotificationType.THRESHOLD_ALERT, // 필요하면 QUIET_ZONE 타입 추가해서 변경
+                title = title,
+                message = message,
                 placeName = placeName,
                 placeId = kakaoPlaceId,
-                timestamp = System.currentTimeMillis()
+                timestamp = System.currentTimeMillis(),
+                thresholdDb = null,
+                detectedDb = detectedDb
             )
         )
     }
 
+    // ================== 3) 임계값 알림 ==================
+
+    @SuppressLint("MissingPermission")
     fun showThresholdAlertNotification(
         context: Context,
+        kakaoPlaceId: String,
         placeName: String,
-        placeAddress: String,
         thresholdDb: Double,
-        detectedDb: Double,
-        kakaoPlaceId: String
+        detectedDb: Double
     ) {
-        val intent = Intent(context, PlaceDetailActivity::class.java).apply {
-            putExtra("kakao_place_id", kakaoPlaceId)
-            putExtra("place_name", placeName)
-            putExtra("address", placeAddress)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
+        createChannelIfNeeded(context, CHANNEL_THRESHOLD_ALERT, "임계값 알림")
 
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            kakaoPlaceId.hashCode(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val title = "조용해졌어요"
+        val message =
+            "${placeName}이(가) 임계값 ${thresholdDb.toInt()} dB 이하로 내려갔습니다 (${detectedDb.toInt()} dB 감지)."
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID_THRESHOLD_ALERT)
+        val pendingIntent = buildPlaceDetailPendingIntent(context, kakaoPlaceId)
+        val notificationId = UUID.randomUUID().toString()
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_THRESHOLD_ALERT)
             .setSmallIcon(R.drawable.ic_notifications)
-            .setContentTitle("조용해졌어요")
-            .setContentText("${placeName}이 ${thresholdDb.toInt()} dB 임계값 이하로 내려갔습니다 (${detectedDb.toInt()} dB 감지).")
-            .setStyle(
-                NotificationCompat.BigTextStyle()
-                    .bigText("${placeName}이 ${thresholdDb.toInt()} dB 임계값 이하로 내려갔습니다 (${detectedDb.toInt()} dB 감지).")
-            )
-            .setContentIntent(pendingIntent)
+            .setContentTitle(title)
+            .setContentText(message)
             .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
-        NotificationManagerCompat.from(context).notify(
-            kakaoPlaceId.hashCode(),
-            notification
-        )
+        NotificationManagerCompat.from(context)
+            .notify(notificationId.hashCode(), notification)
 
-        // 알림 히스토리에 저장
-        NotificationHistoryManager.addNotification(
+        NotificationHistoryManager.addHistoryItem(
             context,
             NotificationHistoryItem(
-                id = UUID.randomUUID().toString(),
-                    type = NotificationType.THRESHOLD_ALERT,
-                    title = "조용해졌어요",
-                    message = "${placeName}이 ${thresholdDb.toInt()} dB 임계값 이하로 내려갔습니다 (${detectedDb.toInt()} dB 감지).",
+                id = notificationId,
+                type = NotificationType.THRESHOLD_ALERT,
+                title = title,
+                message = message,
                 placeName = placeName,
                 placeId = kakaoPlaceId,
                 timestamp = System.currentTimeMillis(),
@@ -162,4 +210,3 @@ object NotificationHelper {
         )
     }
 }
-

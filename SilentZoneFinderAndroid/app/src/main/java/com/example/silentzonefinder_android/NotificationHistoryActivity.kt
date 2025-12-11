@@ -2,7 +2,6 @@ package com.example.silentzonefinder_android
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.silentzonefinder_android.adapter.NotificationHistoryAdapter
@@ -19,67 +18,36 @@ class NotificationHistoryActivity : AppCompatActivity() {
         binding = ActivityNotificationHistoryBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupUI()
-        loadNotificationHistory()
-    }
-
-    private fun setupUI() {
-        // 상단 뒤로가기 버튼
+        // 상단 뒤로가기 버튼: @+id/btn_back
         binding.btnBack.setOnClickListener {
             finish()
         }
 
-        // RecyclerView 설정
-        adapter = NotificationHistoryAdapter(emptyList()) { item ->
-            // 클릭 이벤트는 어댑터에서 처리
-        }
+        // RecyclerView: @+id/history_list_container
         binding.historyListContainer.layoutManager = LinearLayoutManager(this)
-        binding.historyListContainer.adapter = adapter
-
-        // 아래 바 : Profile 탭 기준으로 유지
-        binding.bottomNavigation.selectedItemId = R.id.navigation_profile
-
-        binding.bottomNavigation.setOnItemSelectedListener { item ->
-            val target = when (item.itemId) {
-                R.id.navigation_map -> MainActivity::class.java
-                R.id.navigation_my_reviews -> MyReviewsActivity::class.java
-                R.id.navigation_my_favorite -> MyFavoritesActivity::class.java
-                R.id.navigation_profile -> ProfileActivity::class.java
-                else -> null
-            }
-
-            if (target != null && target != this::class.java) {
-                val intent = Intent(this, target).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    )
+        adapter = NotificationHistoryAdapter(emptyList()) { item ->
+            // 알림 아이템 클릭 시 장소 상세로 이동 (placeId 있을 때만)
+            if (!item.placeId.isNullOrBlank()) {
+                val intent = Intent(this, PlaceDetailActivity::class.java).apply {
+                    putExtra("kakao_place_id", item.placeId)
                 }
                 startActivity(intent)
-                overridePendingTransition(0, 0)
             }
-            true
         }
-    }
+        binding.historyListContainer.adapter = adapter
 
-    private fun loadNotificationHistory() {
-        val history = NotificationHistoryManager.getHistory(this)
-        
-        if (history.isEmpty()) {
-            // 빈 상태 표시
-            binding.historyListContainer.visibility = View.GONE
-            // TODO: 빈 상태 UI 추가
-        } else {
-            binding.historyListContainer.visibility = View.VISIBLE
-            adapter = NotificationHistoryAdapter(history) { item ->
-                // 클릭 이벤트는 어댑터에서 처리
-            }
-            binding.historyListContainer.adapter = adapter
-        }
+
     }
 
     override fun onResume() {
         super.onResume()
         loadNotificationHistory()
+    }
+
+    private fun loadNotificationHistory() {
+        val history = NotificationHistoryManager.getHistory(this)
+        // 이 레이아웃에는 "빈 화면용 TextView"가 따로 없으니까
+        // 비었으면 그냥 아무것도 안 보이고, 있으면 리스트만 업데이트
+        adapter.submitList(history)
     }
 }

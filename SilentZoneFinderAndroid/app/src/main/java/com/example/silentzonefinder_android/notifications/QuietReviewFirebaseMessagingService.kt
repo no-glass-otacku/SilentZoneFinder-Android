@@ -3,6 +3,7 @@ package com.example.silentzonefinder_android.notifications
 import android.util.Log
 import com.example.silentzonefinder_android.SupabaseManager
 import com.example.silentzonefinder_android.data.ReviewDto
+import com.example.silentzonefinder_android.utils.NotificationHelper
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import io.github.jan.supabase.postgrest.postgrest
