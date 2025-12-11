@@ -5,7 +5,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
-    id("com.google.devtools.ksp") version "2.0.21-1.0.28"
 }
 
 // google-services.json 파일이 존재하는지 확인하고 조건부로 플러그인 적용
@@ -139,12 +138,6 @@ dependencies {
     
     // Gson for JSON serialization
     implementation("com.google.code.gson:gson:2.10.1")
-    
-    // Room Database
-    val roomVersion = "2.6.1"
-    implementation("androidx.room:room-runtime:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
-    ksp("androidx.room:room-compiler:$roomVersion")
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
