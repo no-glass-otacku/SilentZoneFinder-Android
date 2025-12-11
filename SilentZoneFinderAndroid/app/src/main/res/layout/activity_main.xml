@@ -108,7 +108,9 @@
                     android:maxLines="1"
                     android:completionThreshold="1"
                     android:dropDownHeight="wrap_content"
-                    android:dropDownVerticalOffset="4dp" />
+                    android:dropDownVerticalOffset="4dp"
+                    android:textColor="@android:color/black"
+                    android:hint="" />
 
             </com.google.android.material.textfield.TextInputLayout>
 

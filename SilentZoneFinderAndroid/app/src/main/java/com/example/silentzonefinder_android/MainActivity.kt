@@ -146,6 +146,7 @@ class MainActivity : AppCompatActivity() {
 
             binding.searchEditText.setText(selectedQuery)
             binding.searchEditText.setSelection(selectedQuery.length)
+            binding.searchTextInputLayout.isHintEnabled = false
             performSearch()
         }
     }
@@ -312,6 +313,9 @@ class MainActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
+                // 텍스트가 하나라도 있으면 hint 완전히 숨기기
+                binding.searchTextInputLayout.isHintEnabled = s.isNullOrEmpty()
+                
                 if (s.isNullOrEmpty()) {
                     showSearchHistory()
                 } else {
@@ -341,6 +345,7 @@ class MainActivity : AppCompatActivity() {
         
         if (resetQueryField) {
             binding.searchEditText.text?.clear()
+            binding.searchTextInputLayout.isHintEnabled = true
         }
         binding.searchEditText.clearFocus()
         searchResultsAdapter.submitList(emptyList())

@@ -54,16 +54,18 @@ class ProfileActivity : AppCompatActivity() {
         getSharedPreferences("notification_prefs", MODE_PRIVATE)
     }
 
+    private var isProgrammaticChange = false // 프로그래밍 방식 변경인지 추적
+
     private lateinit var pickImageLauncher: ActivityResultLauncher<String>
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            Toast.makeText(this, "알림 권한이 허용되었습니다.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Notification permission granted.", Toast.LENGTH_SHORT).show()
         } else {
             binding.switchQuietAlert.isChecked = false
-            Toast.makeText(this, "알림 권한이 필요합니다.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Notification permission required.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -135,7 +137,7 @@ class ProfileActivity : AppCompatActivity() {
             val client = supabase ?: run {
                 Toast.makeText(
                     this@ProfileActivity,
-                    "Supabase가 설정되지 않았습니다.",
+                    "Supabase is not configured.",
                     Toast.LENGTH_SHORT
                 ).show()
                 return@setOnClickListener
@@ -150,24 +152,24 @@ class ProfileActivity : AppCompatActivity() {
                     saveLoggedInUser(email)
                     val name = email.substringBefore("@")
                     showLoggedInLayout(name, email)
-                    Toast.makeText(this@ProfileActivity, "로그인되었습니다.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@ProfileActivity, "Logged in successfully.", Toast.LENGTH_SHORT).show()
                 } catch (e: RestException) {
                     Toast.makeText(
                         this@ProfileActivity,
-                        "이메일 또는 비밀번호를 확인해주세요.",
+                        "Please check your email or password.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (e: HttpRequestException) {
                     Toast.makeText(
                         this@ProfileActivity,
-                        "네트워크 오류로 로그인에 실패했습니다.",
+                        "Login failed due to network error.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (e: Exception) {
                     Log.e("ProfileActivity", "login error", e)
                     Toast.makeText(
                         this@ProfileActivity,
-                        "알 수 없는 오류가 발생했습니다.",
+                        "An unknown error occurred.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -183,7 +185,7 @@ class ProfileActivity : AppCompatActivity() {
             val client = supabase ?: run {
                 Toast.makeText(
                     this@ProfileActivity,
-                    "Supabase가 설정되지 않았습니다.",
+                    "Supabase is not configured.",
                     Toast.LENGTH_SHORT
                 ).show()
                 return@setOnClickListener
@@ -197,26 +199,26 @@ class ProfileActivity : AppCompatActivity() {
                     }
                     Toast.makeText(
                         this@ProfileActivity,
-                        "회원가입이 완료되었습니다. 다시 로그인해주세요.",
+                        "Sign up completed. Please log in again.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (e: RestException) {
                     Toast.makeText(
                         this@ProfileActivity,
-                        "이미 가입된 이메일이거나 요청을 처리할 수 없습니다.",
+                        "Email already registered or request cannot be processed.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (e: HttpRequestException) {
                     Toast.makeText(
                         this@ProfileActivity,
-                        "네트워크 오류로 회원가입에 실패했습니다.",
+                        "Sign up failed due to network error.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (e: Exception) {
                     Log.e("ProfileActivity", "signUp error", e)
                     Toast.makeText(
                         this@ProfileActivity,
-                        "알 수 없는 오류가 발생했습니다.",
+                        "An unknown error occurred.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -224,6 +226,11 @@ class ProfileActivity : AppCompatActivity() {
         }
 
         switchQuietAlert.setOnCheckedChangeListener { _, isChecked ->
+            // 프로그래밍 방식 변경이면 토스트 표시하지 않음
+            if (isProgrammaticChange) {
+                return@setOnCheckedChangeListener
+            }
+            
             if (isChecked) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     !PermissionHelper.hasNotificationPermission(this@ProfileActivity)
@@ -233,11 +240,11 @@ class ProfileActivity : AppCompatActivity() {
                 }
                 //scheduleQuietZoneWorker()
                 notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", true).apply()
-                Toast.makeText(this@ProfileActivity, "조용한 존 추천 알림이 켜졌습니다.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@ProfileActivity, "Quiet zone recommendation alerts enabled.", Toast.LENGTH_SHORT).show()
             } else {
                 //cancelQuietZoneWorker()
                 notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", false).apply()
-                Toast.makeText(this@ProfileActivity, "조용한 존 추천 알림이 꺼졌습니다.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@ProfileActivity, "Quiet zone recommendation alerts disabled.", Toast.LENGTH_SHORT).show()
             }
             onGlobalQuietAlertToggled(isChecked)
         }
@@ -275,18 +282,18 @@ class ProfileActivity : AppCompatActivity() {
             } finally {
                 clearLoggedInUser()
                 showLoginLayout()
-                Toast.makeText(this@ProfileActivity, "로그아웃되었습니다.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@ProfileActivity, "Logged out successfully.", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     private fun isValidEmail(email: String): Boolean {
         if (email.isBlank()) {
-            Toast.makeText(this, "이메일을 입력해주세요.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Please enter your email.", Toast.LENGTH_SHORT).show()
             return false
         }
         if (!EMAIL_PATTERN.matcher(email).matches()) {
-            Toast.makeText(this, "이메일 형식이 올바르지 않습니다.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Invalid email format.", Toast.LENGTH_SHORT).show()
             return false
         }
         return true
@@ -296,7 +303,7 @@ class ProfileActivity : AppCompatActivity() {
         if (password.length < MIN_PASSWORD_LENGTH) {
             Toast.makeText(
                 this,
-                "비밀번호는 최소 ${'$'}MIN_PASSWORD_LENGTH자 이상이어야 합니다.",
+                "Password must be at least ${'$'}MIN_PASSWORD_LENGTH characters.",
                 Toast.LENGTH_SHORT
             ).show()
             return false
@@ -368,8 +375,10 @@ class ProfileActivity : AppCompatActivity() {
                     rows.firstOrNull()?.quietRecommendationEnabled ?: true
                 }
 
-                // 스위치 상태 반영
+                // 프로그래밍 방식 변경으로 표시하여 토스트 방지
+                isProgrammaticChange = true
                 binding.switchQuietAlert.isChecked = enabled
+                isProgrammaticChange = false
 
                 // 로컬 Worker / SharedPreferences도 맞춰주고 싶으면
                 if (enabled) {
@@ -452,7 +461,7 @@ class ProfileActivity : AppCompatActivity() {
                 Log.e("ProfileActivity", "uploadProfileImageToSupabase error", e)
                 Toast.makeText(
                     this@ProfileActivity,
-                    "프로필 이미지 업로드에 실패했습니다.",
+                    "Failed to upload profile image.",
                     Toast.LENGTH_SHORT
                 ).show()
             }

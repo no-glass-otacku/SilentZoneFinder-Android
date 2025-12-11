@@ -13,7 +13,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="32dp"
-        android:layout_marginBottom="16dp"/>
+        android:layout_marginBottom="16dp"
+        android:textColor="@android:color/black"
+        android:textColorHint="@color/grey"/>
 
     <EditText
         android:id="@+id/inputPassword"
@@ -21,7 +23,9 @@
         android:inputType="textPassword"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"/>
+        android:layout_marginBottom="16dp"
+        android:textColor="@android:color/black"
+        android:textColorHint="@color/grey"/>
 
     <Button
         android:id="@+id/btnLogin"
