@@ -434,7 +434,7 @@ class ProfileActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                val fileName = "avatar_${'$'}{System.currentTimeMillis()}.jpg"
+                val fileName = "avatar_${System.currentTimeMillis()}.jpg"
 
                 client.storage.from("avatars").upload(
                     path = fileName,

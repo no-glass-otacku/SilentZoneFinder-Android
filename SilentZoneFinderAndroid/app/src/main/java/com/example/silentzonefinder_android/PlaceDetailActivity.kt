@@ -523,7 +523,7 @@ class PlaceDetailActivity : AppCompatActivity() {
                 onComplete?.invoke(newState)
 
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to toggle notification", e)
+                Log.e("ProfileActivity", "uploadProfileImageToSupabase error: ${e.message}", e)
                 Toast.makeText(
                     this@PlaceDetailActivity,
                     "알림 설정 변경에 실패했어요.",
