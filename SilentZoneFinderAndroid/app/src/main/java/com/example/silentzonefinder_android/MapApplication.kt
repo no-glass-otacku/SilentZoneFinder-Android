@@ -2,16 +2,15 @@ package com.example.silentzonefinder_android
 
 import android.app.Application
 import android.util.Log
-import com.example.silentzonefinder_android.notifications.NotificationHelper as ReviewNotificationHelper
-import com.example.silentzonefinder_android.utils.NotificationHelper as QuietZoneNotificationHelper
+import com.example.silentzonefinder_android.utils.NotificationHelper   // 하나만 import
 import com.kakao.vectormap.KakaoMapSdk
 
 class MapApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        QuietZoneNotificationHelper.createNotificationChannels(this)
-        ReviewNotificationHelper.createNotificationChannel(this)
+        // 앱 시작 시 알림 채널 두 개(새 리뷰 / 임계값) 미리 생성
+        NotificationHelper.createNotificationChannels(this)
 
         try {
             val appKey = BuildConfig.KAKAO_NATIVE_APP_KEY

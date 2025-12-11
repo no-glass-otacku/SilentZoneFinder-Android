@@ -1,12 +1,11 @@
 package com.example.silentzonefinder_android.adapter
 
-import android.content.Intent
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.example.silentzonefinder_android.PlaceDetailActivity
 import com.example.silentzonefinder_android.R
 import com.example.silentzonefinder_android.utils.NotificationHistoryItem
 import com.example.silentzonefinder_android.utils.NotificationType
@@ -16,18 +15,50 @@ import java.util.Date
 import java.util.Locale
 
 class NotificationHistoryAdapter(
-    private val items: List<NotificationHistoryItem>,
-    private val onItemClick: (NotificationHistoryItem) -> Unit
+    private var items: List<NotificationHistoryItem>,
+    private val onClick: (NotificationHistoryItem) -> Unit
 ) : RecyclerView.Adapter<NotificationHistoryAdapter.ViewHolder>() {
 
-    class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val card: MaterialCardView = itemView.findViewById(R.id.card_notification)
-        val iconContainer: MaterialCardView = itemView.findViewById(R.id.icon_container)
-        val title: TextView = itemView.findViewById(R.id.tv_title)
-        val time: TextView = itemView.findViewById(R.id.tv_time)
-        val message: TextView = itemView.findViewById(R.id.tv_message)
-        val placeChip: TextView = itemView.findViewById(R.id.chip_place)
-        val dateChip: TextView = itemView.findViewById(R.id.chip_date)
+    inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+
+        private val card: MaterialCardView = view.findViewById(R.id.card_notification)
+        private val iconContainer: MaterialCardView = view.findViewById(R.id.icon_container)
+        private val titleView: TextView = view.findViewById(R.id.tv_title)
+        private val messageView: TextView = view.findViewById(R.id.tv_message)
+        private val timeView: TextView = view.findViewById(R.id.tv_time)
+        private val chipPlace: TextView = view.findViewById(R.id.chip_place)
+        private val chipDate: TextView = view.findViewById(R.id.chip_date)
+
+        fun bind(item: NotificationHistoryItem) {
+            titleView.text = item.title
+            messageView.text = item.message
+
+            // 장소 이름 칩
+            if (item.placeName.isNullOrBlank()) {
+                chipPlace.visibility = View.GONE
+            } else {
+                chipPlace.visibility = View.VISIBLE
+                chipPlace.text = item.placeName
+            }
+
+            // 상단 시간 텍스트
+            timeView.text = formatTime(item.timestamp)
+
+            // 날짜 칩
+            chipDate.text = formatDate(item.timestamp)
+
+            // 알림 타입에 따라 아이콘 배경색 바꾸기 (원하면)
+            when (item.type) {
+                NotificationType.NEW_REVIEW -> {
+                    iconContainer.setCardBackgroundColor(Color.parseColor("#DCFCE7"))
+                }
+                NotificationType.THRESHOLD_ALERT -> {
+                    iconContainer.setCardBackgroundColor(Color.parseColor("#FEE2E2"))
+                }
+            }
+
+            card.setOnClickListener { onClick(item) }
+        }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -37,69 +68,23 @@ class NotificationHistoryAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val item = items[position]
-        val context = holder.itemView.context
-
-        // 아이콘 배경색 설정
-        val iconColor = when (item.type) {
-            NotificationType.QUIET_ZONE_RECOMMENDATION -> "#DCFCE7" // 녹색
-            NotificationType.THRESHOLD_ALERT -> "#FEE2E2" // 빨간색
-        }
-        holder.iconContainer.setCardBackgroundColor(android.graphics.Color.parseColor(iconColor))
-
-        holder.title.text = item.title
-        holder.message.text = item.message
-
-        // 시간 포맷팅
-        val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
-        holder.time.text = timeFormat.format(Date(item.timestamp))
-
-        // 날짜 칩
-        val dateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
-        val today = Date()
-        val itemDate = Date(item.timestamp)
-        val dateText = when {
-            isSameDay(today, itemDate) -> "Today"
-            isSameDay(Date(today.time - 86400000), itemDate) -> "Yesterday"
-            else -> dateFormat.format(itemDate)
-        }
-        holder.dateChip.text = dateText
-
-        // 장소 칩
-        holder.placeChip.text = item.placeName ?: "알 수 없는 장소"
-        holder.placeChip.visibility = if (item.placeName != null) View.VISIBLE else View.GONE
-
-        // 클릭 이벤트
-        holder.card.setOnClickListener {
-            if (item.placeId != null && item.placeName != null) {
-                val intent = Intent(context, PlaceDetailActivity::class.java).apply {
-                    putExtra("kakao_place_id", item.placeId)
-                    putExtra("place_name", item.placeName)
-                }
-                context.startActivity(intent)
-            }
-            onItemClick(item)
-        }
+        holder.bind(items[position])
     }
 
-    override fun getItemCount() = items.size
+    override fun getItemCount(): Int = items.size
 
-    private fun isSameDay(date1: Date, date2: Date): Boolean {
-        val cal1 = java.util.Calendar.getInstance()
-        val cal2 = java.util.Calendar.getInstance()
-        cal1.time = date1
-        cal2.time = date2
-        return cal1.get(java.util.Calendar.YEAR) == cal2.get(java.util.Calendar.YEAR) &&
-                cal1.get(java.util.Calendar.DAY_OF_YEAR) == cal2.get(java.util.Calendar.DAY_OF_YEAR)
+    fun submitList(newItems: List<NotificationHistoryItem>) {
+        items = newItems
+        notifyDataSetChanged()
+    }
+
+    private fun formatTime(timestamp: Long): String {
+        val df = SimpleDateFormat("HH:mm", Locale.getDefault())
+        return df.format(Date(timestamp))
+    }
+
+    private fun formatDate(timestamp: Long): String {
+        val df = SimpleDateFormat("yyyy.MM.dd", Locale.getDefault())
+        return df.format(Date(timestamp))
     }
 }
-
-
-
-
-
-
-
-
-
-

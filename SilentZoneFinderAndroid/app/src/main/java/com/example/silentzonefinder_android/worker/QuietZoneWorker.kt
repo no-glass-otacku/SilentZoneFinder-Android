@@ -34,6 +34,10 @@ class QuietZoneWorker(
         private const val WORK_NAME = "quiet_zone_worker"
         private const val WORK_INTERVAL_MINUTES = 1L
 
+        // 새 리뷰에 대해서만 한 번만 알림 보내기 위한 키
+        private const val PREFS_NAME = "quiet_zone_worker_prefs"
+        private const val KEY_PREFIX_LAST_NOTIFIED = "last_notified_review_"
+
         fun schedule(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -129,12 +133,17 @@ class QuietZoneWorker(
                 return Result.success()
             }
 
+            // ★ 리뷰 기준 중복 발송 방지용 SharedPreferences
+            val workerPrefs = applicationContext.getSharedPreferences(
+                PREFS_NAME,
+                Context.MODE_PRIVATE
+            )
+
             // 각 즐겨찾기 장소의 최근 리뷰 평균 소음 확인
             for (favorite in favorites) {
                 try {
                     val recentReviews = withContext(Dispatchers.IO) {
                         try {
-                            // 최근 1시간 이내 리뷰만 조회
                             SupabaseManager.client.postgrest["reviews"]
                                 .select(Columns.ALL) {
                                     filter {
@@ -145,12 +154,34 @@ class QuietZoneWorker(
                                 }
                                 .decodeList<ReviewDto>()
                         } catch (e: Exception) {
-                            Log.e(TAG, "Failed to fetch reviews for ${favorite.kakaoPlaceId}", e)
+                            Log.e(
+                                TAG,
+                                "Failed to fetch reviews for ${favorite.kakaoPlaceId}",
+                                e
+                            )
                             emptyList()
                         }
                     }
 
                     if (recentReviews.isEmpty()) continue
+
+                    // ★ 이 장소에서 가장 최근 리뷰 시간
+                    val latestReview = recentReviews.maxByOrNull { it.createdAt } ?: continue
+
+                    // ★ 마지막으로 알림을 보낸 리뷰 시간
+                    val key = KEY_PREFIX_LAST_NOTIFIED + favorite.kakaoPlaceId
+                    val lastNotifiedCreatedAt = workerPrefs.getString(key, null)
+
+                    // ★ 새 리뷰가 없으면 이 장소는 스킵 → 중복 알림 방지의 핵심
+                    if (lastNotifiedCreatedAt != null &&
+                        latestReview.createdAt <= lastNotifiedCreatedAt
+                    ) {
+                        Log.d(
+                            TAG,
+                            "No new review for ${favorite.kakaoPlaceId}, skip notifications"
+                        )
+                        continue
+                    }
 
                     // 평균 소음 계산
                     val avgNoise = recentReviews.map { it.noiseLevelDb }.average()
@@ -169,9 +200,9 @@ class QuietZoneWorker(
                             Log.e(TAG, "Failed to fetch place info", e)
                             null
                         }
-                    }
+                    } ?: continue
 
-                    if (place == null) continue
+                    var sentAnyNotification = false
 
                     // 조용한 장소 추천 알림 (60 dB 이하)
                     if (avgNoise <= QUIET_THRESHOLD_DB) {
@@ -182,21 +213,29 @@ class QuietZoneWorker(
                             avgNoise,
                             favorite.kakaoPlaceId
                         )
+                        sentAnyNotification = true
                         Log.d(TAG, "Sent quiet zone notification for ${place.name}")
                     }
 
-                    // 임계값 초과 알림
-                    val threshold = favorite.alertThresholdDb ?: continue
-                    if (avgNoise <= threshold) {
+                    // 임계값 알림
+                    val threshold = favorite.alertThresholdDb
+                    if (threshold != null && avgNoise <= threshold) {
                         NotificationHelper.showThresholdAlertNotification(
-                            applicationContext,
-                            place.name ?: "알 수 없는 장소",
-                            place.address ?: "",
-                            threshold,
-                            avgNoise,
-                            favorite.kakaoPlaceId
+                            context = applicationContext,
+                            kakaoPlaceId = favorite.kakaoPlaceId,
+                            placeName = place.name ?: "알 수 없는 장소",
+                            thresholdDb = threshold,
+                            detectedDb = avgNoise
                         )
+                        sentAnyNotification = true
                         Log.d(TAG, "Sent threshold alert for ${place.name}")
+                    }
+
+                    // ★ 이번에 어떤 알림이라도 보냈다면, 최신 리뷰 시간 기록
+                    if (sentAnyNotification) {
+                        workerPrefs.edit()
+                            .putString(key, latestReview.createdAt)
+                            .apply()
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error processing favorite ${favorite.kakaoPlaceId}", e)
@@ -219,7 +258,5 @@ class QuietZoneWorker(
         return prefs.getBoolean("quiet_zone_notifications_enabled", false)
     }
 }
-
-
 
 

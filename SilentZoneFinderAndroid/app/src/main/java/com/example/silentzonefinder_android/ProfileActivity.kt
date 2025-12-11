@@ -26,6 +26,12 @@ import io.github.jan.supabase.storage.storage
 import io.ktor.http.ContentType
 import kotlinx.coroutines.launch
 import java.util.regex.Pattern
+import io.github.jan.supabase.postgrest.postgrest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
 
 class ProfileActivity : AppCompatActivity() {
 
@@ -54,7 +60,6 @@ class ProfileActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            scheduleQuietZoneWorker()
             Toast.makeText(this, "알림 권한이 허용되었습니다.", Toast.LENGTH_SHORT).show()
         } else {
             binding.switchQuietAlert.isChecked = false
@@ -73,6 +78,7 @@ class ProfileActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        QuietZoneWorker.cancel(this)
         binding = ActivityProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -92,6 +98,7 @@ class ProfileActivity : AppCompatActivity() {
 
         // 필요하면 애니메이션 제거도 여기서
         // overridePendingTransition(0, 0)
+        loadGlobalQuietAlertFromSupabase()
     }
 
     private fun showLoginLayout() {
@@ -224,19 +231,20 @@ class ProfileActivity : AppCompatActivity() {
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     return@setOnCheckedChangeListener
                 }
-                scheduleQuietZoneWorker()
+                //scheduleQuietZoneWorker()
                 notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", true).apply()
                 Toast.makeText(this@ProfileActivity, "조용한 존 추천 알림이 켜졌습니다.", Toast.LENGTH_SHORT).show()
             } else {
-                cancelQuietZoneWorker()
+                //cancelQuietZoneWorker()
                 notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", false).apply()
                 Toast.makeText(this@ProfileActivity, "조용한 존 추천 알림이 꺼졌습니다.", Toast.LENGTH_SHORT).show()
             }
+            onGlobalQuietAlertToggled(isChecked)
         }
 
-        val notificationsEnabled =
-            notificationPrefs.getBoolean("quiet_zone_notifications_enabled", false)
-        switchQuietAlert.isChecked = notificationsEnabled
+        //val notificationsEnabled =
+            //notificationPrefs.getBoolean("quiet_zone_notifications_enabled", false)
+        //switchQuietAlert.isChecked = notificationsEnabled
 
         rowNotificationHistory.setOnClickListener {
             val intent = Intent(this@ProfileActivity, NotificationHistoryActivity::class.java)
@@ -318,6 +326,81 @@ class ProfileActivity : AppCompatActivity() {
             }
         }
     }
+    // ★ Supabase에 마스터 스위치 상태 저장
+    private fun onGlobalQuietAlertToggled(enabled: Boolean) {
+        val client = supabase ?: return
+
+        lifecycleScope.launch {
+            try {
+                val session = client.auth.currentSessionOrNull() ?: return@launch
+                val userId = session.user?.id?.toString() ?: return@launch
+
+                withContext(Dispatchers.IO) {
+                    client.postgrest["user_notification_settings"].upsert(
+                        UserNotificationSettingsDto(
+                            userId = userId,
+                            quietRecommendationEnabled = enabled
+                        )
+                    )
+                }
+                Log.d("ProfileActivity", "Global quiet alert updated: $enabled")
+            } catch (e: Exception) {
+                Log.e("ProfileActivity", "update global quiet alert failed", e)
+            }
+        }
+    }
+
+    // ★ Supabase에서 마스터 스위치 상태 불러오기
+    private fun loadGlobalQuietAlertFromSupabase() {
+        val client = supabase ?: return
+
+        lifecycleScope.launch {
+            try {
+                val session = client.auth.currentSessionOrNull() ?: return@launch
+                val userId = session.user?.id?.toString() ?: return@launch
+
+                val enabled = withContext(Dispatchers.IO) {
+                    val rows = client.postgrest["user_notification_settings"]
+                        .select {
+                            filter {
+                                eq("user_id", userId)
+                            }
+                            limit(1)
+                        }
+                        .decodeList<UserNotificationSettingsDto>()
+
+                    rows.firstOrNull()?.quietRecommendationEnabled ?: true
+                }
+
+                // 스위치 상태 반영
+                binding.switchQuietAlert.isChecked = enabled
+
+                // 로컬 Worker / SharedPreferences도 맞춰주고 싶으면
+                if (enabled) {
+                    notificationPrefs.edit()
+                        .putBoolean("quiet_zone_notifications_enabled", true)
+                        .apply()
+                } else {
+                    notificationPrefs.edit()
+                        .putBoolean("quiet_zone_notifications_enabled", false)
+                        .apply()
+                }
+
+                Log.d("ProfileActivity", "Global quiet alert loaded: $enabled")
+            } catch (e: Exception) {
+                Log.e("ProfileActivity", "load global quiet alert failed", e)
+            }
+        }
+    }
+
+    @Serializable
+    private data class UserNotificationSettingsDto(
+        @SerialName("user_id") val userId: String,
+        @SerialName("quiet_recommendation_enabled")
+        val quietRecommendationEnabled: Boolean
+    )
+
+
 
     private fun showImageSourceDialog() {
         val dialog = com.example.silentzonefinder_android.fragment.ImageSourceDialogFragment.newInstance(
@@ -425,11 +508,5 @@ class ProfileActivity : AppCompatActivity() {
         }
     }
 
-    private fun scheduleQuietZoneWorker() {
-        QuietZoneWorker.schedule(this)
-    }
 
-    private fun cancelQuietZoneWorker() {
-        QuietZoneWorker.cancel(this)
-    }
 }
