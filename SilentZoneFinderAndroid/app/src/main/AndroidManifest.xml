@@ -36,7 +36,7 @@
             android:value="${KAKAO_NATIVE_APP_KEY}" />
 
         <activity
-            android:name=".NewReviewActivity"
+            android:name=".ReviewWriteActivity"
             android:exported="false" />
         <activity
             android:name=".MyFavoritesActivity"

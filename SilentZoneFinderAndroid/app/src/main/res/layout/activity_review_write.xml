@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".NewReviewActivity">
+    tools:context=".ReviewWriteActivity">
 
     <!-- 1. 툴바 (Toolbar) -->
     <androidx.appcompat.widget.Toolbar

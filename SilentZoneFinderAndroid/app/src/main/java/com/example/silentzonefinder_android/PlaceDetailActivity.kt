@@ -180,7 +180,7 @@ class PlaceDetailActivity : AppCompatActivity() {
     }
 
     private fun openNewReviewActivity() {
-        val intent = NewReviewActivity.createIntent(
+        val intent = ReviewWriteActivity.createIntent(
             context = this,
             kakaoPlaceId = currentPlaceId,
             placeName = currentPlaceName,

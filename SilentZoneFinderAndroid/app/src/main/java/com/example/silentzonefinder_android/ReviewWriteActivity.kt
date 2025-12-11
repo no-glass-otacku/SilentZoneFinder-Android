@@ -26,7 +26,8 @@ import androidx.lifecycle.lifecycleScope
 import com.example.silentzonefinder_android.adapter.ReviewImageAdapter
 import com.example.silentzonefinder_android.data.ReviewDto
 import com.example.silentzonefinder_android.data.ReviewImage
-import com.example.silentzonefinder_android.databinding.ActivityNewReviewBinding
+import com.example.silentzonefinder_android.databinding.ActivityReviewWriteBinding
+import com.example.silentzonefinder_android.BuildConfig
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.storage.storage
@@ -41,8 +42,8 @@ import androidx.activity.result.ActivityResultLauncher
 import java.util.Locale
 
 private const val STATE_IMAGE_URIS = "state_image_uris"
-class NewReviewActivity : AppCompatActivity() {
-    private lateinit var binding: ActivityNewReviewBinding
+class ReviewWriteActivity : AppCompatActivity() {
+    private lateinit var binding: ActivityReviewWriteBinding
     private lateinit var speechLauncher: ActivityResultLauncher<Intent>
     private val REQUEST_RECORD_AUDIO_PERMISSION = 200 // 녹음 권한 요청 코드
 
@@ -74,7 +75,7 @@ class NewReviewActivity : AppCompatActivity() {
     private var isEditMode: Boolean = false
 
     companion object {
-        private const val TAG = "NewReviewActivity"
+        private const val TAG = "ReviewWriteActivity"
         private const val EXTRA_KAKAO_PLACE_ID = "extra_kakao_place_id"
         private const val EXTRA_PLACE_NAME = "extra_place_name"
         private const val EXTRA_ADDRESS = "extra_address"
@@ -90,7 +91,7 @@ class NewReviewActivity : AppCompatActivity() {
             lat: Double? = null,
             lng: Double? = null
         ): Intent {
-            return Intent(context, NewReviewActivity::class.java).apply {
+            return Intent(context, ReviewWriteActivity::class.java).apply {
                 putExtra(EXTRA_KAKAO_PLACE_ID, kakaoPlaceId)
                 putExtra(EXTRA_PLACE_NAME, placeName)
                 putExtra(EXTRA_ADDRESS, address)
@@ -108,7 +109,7 @@ class NewReviewActivity : AppCompatActivity() {
             lat: Double? = null,
             lng: Double? = null
         ): Intent {
-            return Intent(context, NewReviewActivity::class.java).apply {
+            return Intent(context, ReviewWriteActivity::class.java).apply {
                 putExtra(EXTRA_REVIEW_ID, reviewId)
                 putExtra(EXTRA_KAKAO_PLACE_ID, kakaoPlaceId)
                 putExtra(EXTRA_PLACE_NAME, placeName)
@@ -126,7 +127,7 @@ class NewReviewActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityNewReviewBinding.inflate(layoutInflater)
+        binding = ActivityReviewWriteBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         // STT Launcher 초기화
@@ -238,7 +239,7 @@ class NewReviewActivity : AppCompatActivity() {
                 }
                 val userId = session?.user?.id?.toString()
                 if (userId == null) {
-                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@ReviewWriteActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
                     finish()
                     return@launch
                 }
@@ -297,7 +298,7 @@ class NewReviewActivity : AppCompatActivity() {
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load review", e)
-                Toast.makeText(this@NewReviewActivity, getString(R.string.new_review_load_failed), Toast.LENGTH_LONG).show()
+                Toast.makeText(this@ReviewWriteActivity, getString(R.string.new_review_load_failed), Toast.LENGTH_LONG).show()
                 finish()
             }
         }
@@ -384,14 +385,14 @@ class NewReviewActivity : AppCompatActivity() {
 
                 if (currentSession == null) {
                     Log.w(TAG, "No session found - user needs to login")
-                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다. 프로필에서 로그인해주세요.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@ReviewWriteActivity, "로그인이 필요합니다. 프로필에서 로그인해주세요.", Toast.LENGTH_LONG).show()
                     return@launch
                 }
 
                 val user = currentSession.user
                 if (user == null) {
                     Log.w(TAG, "Session exists but user is null")
-                    Toast.makeText(this@NewReviewActivity, "로그인 정보를 확인할 수 없습니다. 다시 로그인해주세요.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@ReviewWriteActivity, "로그인 정보를 확인할 수 없습니다. 다시 로그인해주세요.", Toast.LENGTH_LONG).show()
                     return@launch
                 }
 
@@ -428,7 +429,7 @@ class NewReviewActivity : AppCompatActivity() {
                     }
                     
                     Toast.makeText(
-                        this@NewReviewActivity,
+                        this@ReviewWriteActivity,
                         errorMessage,
                         Toast.LENGTH_LONG
                     ).show()
@@ -457,7 +458,7 @@ class NewReviewActivity : AppCompatActivity() {
                 if (!placeExists) {
                     Log.e(TAG, "Place does not exist after upsert: $kakaoPlaceId")
                     Toast.makeText(
-                        this@NewReviewActivity,
+                        this@ReviewWriteActivity,
                         "장소 정보 확인에 실패했습니다. 다시 시도해주세요.",
                         Toast.LENGTH_LONG
                     ).show()
@@ -501,7 +502,7 @@ class NewReviewActivity : AppCompatActivity() {
                 notifyQuietReview(insertedReviewId)
 
                 Log.d(TAG, "Review saved successfully")
-                Toast.makeText(this@NewReviewActivity, getString(R.string.new_review_save_success), Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@ReviewWriteActivity, getString(R.string.new_review_save_success), Toast.LENGTH_SHORT).show()
 
                 // 4. 성공 시 이전 화면으로 복귀
                 setResult(RESULT_OK)
@@ -509,7 +510,7 @@ class NewReviewActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to save review", e)
                 Toast.makeText(
-                    this@NewReviewActivity,
+                    this@ReviewWriteActivity,
                     getString(R.string.new_review_save_failure, e.message ?: "-"),
                     Toast.LENGTH_LONG
                 ).show()
@@ -547,13 +548,13 @@ class NewReviewActivity : AppCompatActivity() {
                 }
 
                 if (currentSession == null) {
-                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@ReviewWriteActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
                     return@launch
                 }
 
                 val user = currentSession.user
                 if (user == null) {
-                    Toast.makeText(this@NewReviewActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@ReviewWriteActivity, "로그인이 필요합니다.", Toast.LENGTH_LONG).show()
                     return@launch
                 }
 
@@ -596,7 +597,7 @@ class NewReviewActivity : AppCompatActivity() {
                 }
 
                 Log.d(TAG, "Review updated successfully")
-                Toast.makeText(this@NewReviewActivity, getString(R.string.new_review_update_success), Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@ReviewWriteActivity, getString(R.string.new_review_update_success), Toast.LENGTH_SHORT).show()
 
                 setResult(RESULT_OK)
                 finish()
@@ -604,7 +605,7 @@ class NewReviewActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to update review", e)
                 Toast.makeText(
-                    this@NewReviewActivity,
+                    this@ReviewWriteActivity,
                     getString(R.string.new_review_update_failure, e.message ?: "-"),
                     Toast.LENGTH_LONG
                 ).show()
@@ -714,7 +715,7 @@ class NewReviewActivity : AppCompatActivity() {
                 if (session == null || sessionUser == null) {
                     Log.w(TAG, "No active session at activity start")
                     Toast.makeText(
-                        this@NewReviewActivity,
+                        this@ReviewWriteActivity,
                         "로그인이 필요합니다. 프로필에서 로그인해주세요.",
                         Toast.LENGTH_LONG
                     ).show()

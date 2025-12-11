@@ -240,7 +240,7 @@ class MyReviewsActivity : AppCompatActivity() {
     }
 
     private fun openEditReview(review: Review) {
-        val intent = NewReviewActivity.createEditIntent(
+        val intent = ReviewWriteActivity.createEditIntent(
             context = this,
             reviewId = review.id,
             kakaoPlaceId = review.kakaoPlaceId,
