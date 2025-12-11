@@ -56,3 +56,10 @@ class SearchHistoryAdapter(
 
 
 
+
+
+
+
+
+
+

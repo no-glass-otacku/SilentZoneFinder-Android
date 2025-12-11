@@ -115,6 +115,8 @@ class MainActivity : AppCompatActivity() {
     private var shouldClearSearchResultsOnResume = false
     private var currentWeatherLat: Double = 0.0
     private var currentWeatherLon: Double = 0.0
+    private var isSearchMode: Boolean = false
+    private var searchResultPlaces: List<PlaceDocument> = emptyList()
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -333,6 +335,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        isSearchMode = false
+        searchResultPlaces = emptyList()
+        
         if (resetQueryField) {
             binding.searchEditText.text?.clear()
         }
@@ -381,11 +386,20 @@ class MainActivity : AppCompatActivity() {
         binding.searchResultsCard.isVisible = hasResults
         binding.searchResultsRecyclerView.isVisible = hasResults
         if (hasResults) {
+            isSearchMode = true
+            searchResultPlaces = results
             closeInfoWindow()
             clearMarkers()
+            clearSelectedPlaceMarker()
+            // 검색 결과의 모든 장소를 지도에 마커로 표시
+            renderSearchResultMarkers(results)
             binding.searchResultsRecyclerView.scrollToPosition(0)
-        } else if (renderMarkersWhenEmpty) {
-            renderFilteredMarkers()
+        } else {
+            isSearchMode = false
+            searchResultPlaces = emptyList()
+            if (renderMarkersWhenEmpty) {
+                renderFilteredMarkers()
+            }
         }
     }
 
@@ -593,6 +607,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderFilteredMarkers() {
+        // 검색 모드일 때는 검색 결과만 표시
+        if (isSearchMode && searchResultPlaces.isNotEmpty()) {
+            renderSearchResultMarkers(searchResultPlaces)
+            return
+        }
+        
         if (visiblePlaceMarkers.isEmpty()) {
             clearMarkers()
             return
@@ -616,8 +636,164 @@ class MainActivity : AppCompatActivity() {
         }
         renderMarkers(places)
     }
+    
+    private fun renderSearchResultMarkers(places: List<PlaceDocument>) {
+        val map = kakaoMap ?: return
+        val labelManager = map.labelManager ?: return
+        val layer = obtainLabelLayer() ?: return
+
+        clearMarkers()
+        clearSelectedPlaceMarker()
+
+        // 먼저 기존 마커 데이터가 있는 장소들을 동기적으로 표시
+        val placesWithExistingMarkers = mutableListOf<PlaceDocument>()
+        val placesWithoutMarkers = mutableListOf<PlaceDocument>()
+
+        places.forEach { place ->
+            val matchedMarker = allPlaceMarkers.firstOrNull { it.kakaoPlaceId == place.id }
+            if (matchedMarker != null) {
+                placesWithExistingMarkers.add(place)
+            } else {
+                placesWithoutMarkers.add(place)
+            }
+        }
+
+        // 기존 마커가 있는 장소들을 먼저 표시
+        placesWithExistingMarkers.forEach { place ->
+            val matchedMarker = allPlaceMarkers.firstOrNull { it.kakaoPlaceId == place.id } ?: return@forEach
+            val lat = place.y.toDoubleOrNull() ?: return@forEach
+            val lng = place.x.toDoubleOrNull() ?: return@forEach
+            val position = LatLng.from(lat, lng)
+            
+            val markerBitmap = renderNoiseMarker(matchedMarker)
+            val labelStyles = labelManager.addLabelStyles(
+                LabelStyles.from(
+                    LabelStyle.from(markerBitmap)
+                        .setAnchorPoint(0.5f, 1.0f)
+                )
+            )
+
+            val labelId = "search_${place.id}"
+            val labelOptions = LabelOptions.from(labelId, position)
+                .setStyles(labelStyles)
+                .setClickable(true)
+                .setTag(place)
+
+            layer.addLabel(labelOptions)
+            currentMarkerLabelIds.add(labelId)
+        }
+
+        // 기존 마커가 없는 장소들은 기본 마커로 먼저 표시
+        placesWithoutMarkers.forEach { place ->
+            val lat = place.y.toDoubleOrNull() ?: return@forEach
+            val lng = place.x.toDoubleOrNull() ?: return@forEach
+            val position = LatLng.from(lat, lng)
+            
+            val markerBitmap = renderBasicMarker(place)
+            val labelStyles = labelManager.addLabelStyles(
+                LabelStyles.from(
+                    LabelStyle.from(markerBitmap)
+                        .setAnchorPoint(0.5f, 1.0f)
+                )
+            )
+
+            val labelId = "search_${place.id}"
+            val labelOptions = LabelOptions.from(labelId, position)
+                .setStyles(labelStyles)
+                .setClickable(true)
+                .setTag(place)
+
+            layer.addLabel(labelOptions)
+            currentMarkerLabelIds.add(labelId)
+        }
+
+        // 백그라운드에서 리뷰를 조회하여 마커 업데이트
+        if (placesWithoutMarkers.isNotEmpty()) {
+            lifecycleScope.launch {
+                try {
+                    val allPlaceIds = placesWithoutMarkers.map { it.id }
+                    val reviews: List<ReviewDto> = withContext(Dispatchers.IO) {
+                        SupabaseManager.client.postgrest["reviews"]
+                            .select()
+                            .decodeList<ReviewDto>()
+                            .filter { it.kakaoPlaceId in allPlaceIds }
+                    }
+
+                    // 리뷰가 있는 장소들의 마커를 업데이트
+                    reviews.groupBy { it.kakaoPlaceId }.forEach { (placeId, reviewList) ->
+                        val place = placesWithoutMarkers.firstOrNull { it.id == placeId } ?: return@forEach
+                        val lat = place.y.toDoubleOrNull() ?: return@forEach
+                        val lng = place.x.toDoubleOrNull() ?: return@forEach
+                        val position = LatLng.from(lat, lng)
+
+                        val avgDb = reviewList.map { it.noiseLevelDb }.average()
+                        val avgRating = reviewList.map { it.rating.toFloat() }.average().toFloat()
+                        val noiseLevel = getNoiseLevelFromDb(avgDb)
+                        
+                        val address = place.road_address_name.takeIf { it.isNotBlank() } 
+                            ?: place.address_name
+                        
+                        val placeUiSample = PlaceMarkerData(
+                            kakaoPlaceId = place.id,
+                            name = place.place_name,
+                            address = address,
+                            latitude = lat,
+                            longitude = lng,
+                            noiseLevel = noiseLevel,
+                            rating = avgRating,
+                            noiseValueDb = avgDb.toInt(),
+                            reviewCount = reviewList.size,
+                            latestReviewSnippet = reviewList.firstOrNull()?.text?.take(30) ?: "",
+                            categoryLabel = place.category_name
+                        )
+                        
+                        val markerBitmap = renderNoiseMarker(placeUiSample)
+                        val labelStyles = labelManager.addLabelStyles(
+                            LabelStyles.from(
+                                LabelStyle.from(markerBitmap)
+                                    .setAnchorPoint(0.5f, 1.0f)
+                            )
+                        )
+
+                        val labelId = "search_${place.id}"
+                        // 기존 마커 제거
+                        layer.getLabel(labelId)?.let { layer.remove(it) }
+                        currentMarkerLabelIds.remove(labelId)
+                        
+                        // 새 마커 추가
+                        val labelOptions = LabelOptions.from(labelId, position)
+                            .setStyles(labelStyles)
+                            .setClickable(true)
+                            .setTag(place)
+
+                        layer.addLabel(labelOptions)
+                        currentMarkerLabelIds.add(labelId)
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Failed to load reviews for search markers", e)
+                }
+            }
+        }
+        
+        // 첫 번째 검색 결과로 지도 이동
+        if (places.isNotEmpty()) {
+            val firstPlace = places[0]
+            val lat = firstPlace.y.toDoubleOrNull()
+            val lng = firstPlace.x.toDoubleOrNull()
+            if (lat != null && lng != null) {
+                val location = LatLng.from(lat, lng)
+                map.moveCamera(CameraUpdateFactory.newCenterPosition(location))
+                lastKnownCenter = location
+            }
+        }
+    }
 
     private fun scheduleCameraReload(cameraPosition: CameraPosition) {
+        // 검색 모드일 때는 카메라 이동해도 검색 결과만 유지
+        if (isSearchMode && searchResultPlaces.isNotEmpty()) {
+            return
+        }
+        
         cameraMoveReloadJob?.cancel()
         cameraMoveReloadJob = lifecycleScope.launch {
             delay(cameraMoveDebounceMillis)
@@ -652,6 +828,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateVisibleMarkersForCurrentCamera() {
+        // 검색 모드일 때는 카메라 이동해도 검색 결과만 유지
+        if (isSearchMode && searchResultPlaces.isNotEmpty()) {
+            return
+        }
+        
         val map = kakaoMap ?: return
         val cameraPosition = map.cameraPosition ?: return
         val center = cameraPosition.position
@@ -935,13 +1116,19 @@ class MainActivity : AppCompatActivity() {
         val location = LatLng.from(lat, lng)
         kakaoMap?.let { map ->
             map.moveCamera(CameraUpdateFactory.newCenterPosition(location))
-            showSelectedPlaceMarker(place, location)
+            // 검색 모드일 때는 선택된 마커만 표시하지 않고 검색 결과 마커 유지
+            if (!isSearchMode) {
+                showSelectedPlaceMarker(place, location)
+            }
             if (showToast) {
                 Toast.makeText(this, "Moved to ${place.place_name}.", Toast.LENGTH_SHORT).show()
             }
         }
         lastKnownCenter = location
-        clearMarkers()
+        // 검색 모드가 아닐 때만 마커 클리어
+        if (!isSearchMode) {
+            clearMarkers()
+        }
     }
 
     private fun openPlaceDetail(

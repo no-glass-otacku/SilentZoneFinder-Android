@@ -9,6 +9,15 @@
     android:minWidth="60dp">
 
     <TextView
+        android:id="@+id/dateTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="10sp"
+        android:textColor="@color/grey"
+        android:visibility="gone"
+        tools:text="12/25" />
+
+    <TextView
         android:id="@+id/timeTextView"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -35,4 +44,6 @@
         tools:text="-4°" />
 
 </LinearLayout>
+
+
 

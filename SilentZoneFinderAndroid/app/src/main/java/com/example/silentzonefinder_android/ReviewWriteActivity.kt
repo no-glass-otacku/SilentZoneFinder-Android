@@ -400,21 +400,31 @@ class ReviewWriteActivity : AppCompatActivity() {
                 Log.d(TAG, "Using user ID for review: $userId")
 
                 // 2. places 테이블에 장소 정보 upsert (반드시 성공해야 함)
+                val resolvedCoords = withContext(Dispatchers.IO) { resolvePlaceCoordinates() }
+                if (resolvedCoords == null) {
+                    Toast.makeText(
+                        this@ReviewWriteActivity,
+                        "장소 좌표를 불러올 수 없습니다. 장소 정보를 다시 확인해주세요.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@launch
+                }
                 try {
                     withContext(Dispatchers.IO) {
+                        val (resolvedLat, resolvedLng) = resolvedCoords
                         val placeData = PlaceInsertDto(
                             kakaoPlaceId = kakaoPlaceId,
                             name = placeName,
                             address = address,
-                            lat = lat,
-                            lng = lng
+                            lat = resolvedLat,
+                            lng = resolvedLng
                         )
 
                         SupabaseManager.client.postgrest["places"]
                             .upsert(placeData) {
                                 onConflict = "kakao_place_id"
                             }
-                        Log.d(TAG, "Place upserted successfully: $kakaoPlaceId")
+                        Log.d(TAG, "Place upserted successfully: $kakaoPlaceId (lat=$resolvedLat, lng=$resolvedLng)")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to upsert place", e)
@@ -627,8 +637,8 @@ class ReviewWriteActivity : AppCompatActivity() {
         @SerialName("kakao_place_id") val kakaoPlaceId: String,
         val name: String,
         val address: String,
-        val lat: Double? = null,
-        val lng: Double? = null
+        val lat: Double,
+        val lng: Double
     )
 
     @Serializable
@@ -639,6 +649,37 @@ class ReviewWriteActivity : AppCompatActivity() {
         val lat: Double? = null,
         val lng: Double? = null
     )
+
+    private suspend fun resolvePlaceCoordinates(): Pair<Double, Double>? {
+        val localLat = lat
+        val localLng = lng
+        if (localLat != null && localLng != null) {
+            return localLat to localLng
+        }
+
+        return try {
+            val existingPlace = SupabaseManager.client.postgrest["places"]
+                .select {
+                    filter { eq("kakao_place_id", kakaoPlaceId) }
+                }
+                .decodeList<PlaceDto>()
+                .firstOrNull()
+
+            val resolvedLat = existingPlace?.lat
+            val resolvedLng = existingPlace?.lng
+
+            if (resolvedLat != null && resolvedLng != null) {
+                lat = resolvedLat
+                lng = resolvedLng
+                resolvedLat to resolvedLng
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to resolve place coordinates", e)
+            null
+        }
+    }
 
     @Serializable
     private data class ReviewInsertDto(

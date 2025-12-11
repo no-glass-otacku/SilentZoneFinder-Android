@@ -2,6 +2,7 @@ package com.example.silentzonefinder_android.data
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.util.Date
 
 @Serializable
 data class WeatherResponse(
@@ -126,4 +127,15 @@ data class City(
     val sunrise: Long,
     val sunset: Long
 )
+
+// 일별 예보 아이템 (시간대별 예보를 일별로 그룹화한 데이터)
+data class DailyForecastItem(
+    val date: Date,
+    val minTemp: Double,
+    val maxTemp: Double,
+    val weather: Weather,
+    val dt: Long
+)
+
+
 

@@ -52,3 +52,10 @@ data class ReviewEntity(
     val isPendingSync: Boolean = false
 )
 
+
+
+
+
+
+
+

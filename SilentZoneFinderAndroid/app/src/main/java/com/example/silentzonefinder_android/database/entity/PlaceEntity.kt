@@ -32,3 +32,10 @@ data class PlaceEntity(
     val lastSyncedAt: Long = System.currentTimeMillis()
 )
 
+
+
+
+
+
+
+

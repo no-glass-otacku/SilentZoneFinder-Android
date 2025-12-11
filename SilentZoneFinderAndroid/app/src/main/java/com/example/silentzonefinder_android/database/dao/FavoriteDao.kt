@@ -54,3 +54,10 @@ interface FavoriteDao {
     suspend fun deleteAllFavorites()
 }
 
+
+
+
+
+
+
+

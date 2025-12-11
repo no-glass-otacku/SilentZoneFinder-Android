@@ -98,3 +98,10 @@ class SearchHistoryActivity : AppCompatActivity() {
 
 
 
+
+
+
+
+
+
+

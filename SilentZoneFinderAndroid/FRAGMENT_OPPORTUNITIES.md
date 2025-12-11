@@ -222,3 +222,10 @@ ImageZoomDialogFragment.newInstance(imageUrl).show(supportFragmentManager, "imag
 
 이 두 가지만 먼저 적용해도 충분히 Fragment의 이점을 경험할 수 있습니다!
 
+
+
+
+
+
+
+

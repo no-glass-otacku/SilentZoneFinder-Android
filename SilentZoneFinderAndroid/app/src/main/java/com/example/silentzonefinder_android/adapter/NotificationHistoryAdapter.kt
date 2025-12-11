@@ -33,7 +33,6 @@ class NotificationHistoryAdapter(
             titleView.text = item.title
             messageView.text = item.message
 
-            // 장소 이름 칩
             if (item.placeName.isNullOrBlank()) {
                 chipPlace.visibility = View.GONE
             } else {
@@ -41,13 +40,9 @@ class NotificationHistoryAdapter(
                 chipPlace.text = item.placeName
             }
 
-            // 상단 시간 텍스트
             timeView.text = formatTime(item.timestamp)
-
-            // 날짜 칩
             chipDate.text = formatDate(item.timestamp)
 
-            // 알림 타입에 따라 아이콘 배경색 바꾸기 (원하면)
             when (item.type) {
                 NotificationType.NEW_REVIEW -> {
                     iconContainer.setCardBackgroundColor(Color.parseColor("#DCFCE7"))

@@ -603,7 +603,7 @@ CREATE TABLE profiles (
 
 ---
 
-**마지막 업데이트**: 2025-11-27
+**마지막 업데이트**: 2025-12-11
 **프로젝트**: SilentZoneFinder Android
 **Figma 디자인**: https://www.figma.com/design/F5LHvHsGsOpHQRcn1SabmC/silentZone
 

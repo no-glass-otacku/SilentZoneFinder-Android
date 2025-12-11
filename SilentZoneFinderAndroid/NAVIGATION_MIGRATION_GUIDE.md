@@ -211,3 +211,10 @@ setFragmentResultListener("review_result") { key, bundle ->
 **결론**: 대규모 리팩토링이지만, 장기적으로는 유지보수성과 성능 향상에 도움이 됩니다. 
 하지만 현재 구조가 잘 작동한다면, 반드시 필요한 작업은 아닙니다.
 
+
+
+
+
+
+
+

@@ -1,11 +1,24 @@
 import java.util.Properties
+import java.io.File
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     id("com.google.devtools.ksp") version "2.0.21-1.0.28"
-    id("com.google.gms.google-services") version "4.4.2"
+}
+
+// google-services.json 파일이 존재하는지 확인하고 조건부로 플러그인 적용
+// Google Services 플러그인이 검색하는 여러 위치 확인
+val googleServicesFile = listOf(
+    File(projectDir, "google-services.json"),           // app/google-services.json
+    File(projectDir, "src/main/google-services.json"),  // app/src/main/google-services.json
+    File(projectDir, "src/debug/google-services.json"), // app/src/debug/google-services.json
+    File(projectDir, "src/release/google-services.json") // app/src/release/google-services.json
+).firstOrNull { it.exists() }
+
+if (googleServicesFile != null) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 // local.properties에서 Supabase 키 읽기

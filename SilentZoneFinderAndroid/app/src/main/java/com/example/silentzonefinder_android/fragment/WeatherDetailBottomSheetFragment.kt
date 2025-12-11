@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.silentzonefinder_android.R
 import com.example.silentzonefinder_android.data.AirQualityData
+import com.example.silentzonefinder_android.data.DailyForecastItem
 import com.example.silentzonefinder_android.data.HourlyForecastItem
 import com.example.silentzonefinder_android.data.WeatherResponse
 import com.example.silentzonefinder_android.databinding.FragmentWeatherDetailBinding
@@ -35,6 +36,7 @@ class WeatherDetailBottomSheetFragment : BottomSheetDialogFragment() {
     private var locationName: String = ""
 
     private val hourlyForecastAdapter = HourlyForecastAdapter()
+    private val dailyForecastAdapter = DailyForecastAdapter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,8 +87,7 @@ class WeatherDetailBottomSheetFragment : BottomSheetDialogFragment() {
         binding.dailyTab.setOnClickListener {
             binding.hourlyTab.isSelected = false
             binding.dailyTab.isSelected = true
-            // 일별 예보는 현재 시간대별로 표시
-            loadHourlyForecast()
+            loadDailyForecast()
         }
 
         binding.hourlyTab.isSelected = true
@@ -183,6 +184,8 @@ class WeatherDetailBottomSheetFragment : BottomSheetDialogFragment() {
                 val result = weatherService.getHourlyForecast(currentLat, currentLon)
                 result.fold(
                     onSuccess = { forecast ->
+                        binding.hourlyForecastRecyclerView.layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
+                        binding.hourlyForecastRecyclerView.adapter = hourlyForecastAdapter
                         hourlyForecastAdapter.submitList(forecast.list.take(8)) // 최근 8시간 표시
                     },
                     onFailure = { e ->
@@ -193,6 +196,62 @@ class WeatherDetailBottomSheetFragment : BottomSheetDialogFragment() {
                 // 에러 처리
             }
         }
+    }
+    
+    private fun loadDailyForecast() {
+        lifecycleScope.launch {
+            try {
+                val result = weatherService.getHourlyForecast(currentLat, currentLon)
+                result.fold(
+                    onSuccess = { forecast ->
+                        // 시간대별 예보를 일별로 그룹화
+                        val dailyForecasts = groupForecastByDay(forecast.list)
+                        binding.hourlyForecastRecyclerView.layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
+                        binding.hourlyForecastRecyclerView.adapter = dailyForecastAdapter
+                        dailyForecastAdapter.submitList(dailyForecasts)
+                    },
+                    onFailure = { e ->
+                        // 에러 처리
+                    }
+                )
+            } catch (e: Exception) {
+                // 에러 처리
+            }
+        }
+    }
+    
+    private fun groupForecastByDay(forecastList: List<HourlyForecastItem>): List<com.example.silentzonefinder_android.data.DailyForecastItem> {
+        val dailyMap = mutableMapOf<String, MutableList<HourlyForecastItem>>()
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        
+        // 날짜별로 그룹화
+        forecastList.forEach { item ->
+            val date = Date(item.dt * 1000)
+            val dateKey = dateFormat.format(date)
+            dailyMap.getOrPut(dateKey) { mutableListOf() }.add(item)
+        }
+        
+        // 각 날짜별로 최고/최저 온도 계산
+        return dailyMap.map { (dateKey, items) ->
+            val firstItem = items.first()
+            val date = Date(firstItem.dt * 1000)
+            val minTemp = items.minOfOrNull { it.main.tempMin } ?: items.minOf { it.main.temp }
+            val maxTemp = items.maxOfOrNull { it.main.tempMax } ?: items.maxOf { it.main.temp }
+            val weather = firstItem.weather.firstOrNull() ?: com.example.silentzonefinder_android.data.Weather(
+                id = 0,
+                main = "Clear",
+                description = "",
+                icon = ""
+            )
+            
+            com.example.silentzonefinder_android.data.DailyForecastItem(
+                date = date,
+                minTemp = minTemp,
+                maxTemp = maxTemp,
+                weather = weather,
+                dt = firstItem.dt
+            )
+        }.sortedBy { it.dt }.take(5) // 최대 5일 표시
     }
 
     override fun onDestroyView() {
@@ -231,21 +290,70 @@ class WeatherDetailBottomSheetFragment : BottomSheetDialogFragment() {
         }
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            holder.bind(items[position])
+            holder.bind(items[position], position, items)
         }
 
         override fun getItemCount() = items.size
 
         class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+            private val dateTextView: TextView = itemView.findViewById(R.id.dateTextView)
             private val timeTextView: TextView = itemView.findViewById(R.id.timeTextView)
             private val tempTextView: TextView = itemView.findViewById(R.id.tempTextView)
             private val iconImageView: View = itemView.findViewById(R.id.iconImageView)
 
-            fun bind(item: HourlyForecastItem) {
+            fun bind(item: HourlyForecastItem, position: Int, items: List<HourlyForecastItem>) {
                 val date = Date(item.dt * 1000)
+                val dateFormat = SimpleDateFormat("MM/dd", Locale.getDefault())
                 val timeFormat = SimpleDateFormat("HH시", Locale.getDefault())
+                
+                // 날짜 표시: 첫 번째 항목이거나 이전 항목과 날짜가 다를 때만 표시
+                val shouldShowDate = position == 0 || 
+                    dateFormat.format(Date(items[position - 1].dt * 1000)) != dateFormat.format(date)
+                
+                if (shouldShowDate) {
+                    dateTextView.text = dateFormat.format(date)
+                    dateTextView.visibility = View.VISIBLE
+                } else {
+                    dateTextView.visibility = View.GONE
+                }
+                
                 timeTextView.text = timeFormat.format(date)
                 tempTextView.text = "${item.main.temp.toInt()}°"
+                // 아이콘은 간단히 표시 (나중에 날씨 아이콘 추가 가능)
+            }
+        }
+    }
+    
+    private class DailyForecastAdapter : RecyclerView.Adapter<DailyForecastAdapter.ViewHolder>() {
+        private var items: List<DailyForecastItem> = emptyList()
+        
+        fun submitList(newItems: List<DailyForecastItem>) {
+            items = newItems
+            notifyDataSetChanged()
+        }
+        
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+            val view = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_daily_forecast, parent, false)
+            return ViewHolder(view)
+        }
+        
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            holder.bind(items[position])
+        }
+        
+        override fun getItemCount() = items.size
+        
+        class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+            private val dateTextView: TextView = itemView.findViewById(R.id.dateTextView)
+            private val tempRangeTextView: TextView = itemView.findViewById(R.id.tempRangeTextView)
+            private val iconImageView: View = itemView.findViewById(R.id.iconImageView)
+            
+            fun bind(item: DailyForecastItem) {
+                val dateFormat = SimpleDateFormat("M월 d일 (E)", Locale.getDefault())
+                dateTextView.text = dateFormat.format(item.date)
+                
+                tempRangeTextView.text = "${item.maxTemp.toInt()}° / ${item.minTemp.toInt()}°"
                 // 아이콘은 간단히 표시 (나중에 날씨 아이콘 추가 가능)
             }
         }
