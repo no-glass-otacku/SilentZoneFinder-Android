@@ -60,7 +60,6 @@ class ProfileActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            scheduleQuietZoneWorker()
             Toast.makeText(this, "알림 권한이 허용되었습니다.", Toast.LENGTH_SHORT).show()
         } else {
             binding.switchQuietAlert.isChecked = false
@@ -79,6 +78,7 @@ class ProfileActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        QuietZoneWorker.cancel(this)
         binding = ActivityProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -231,11 +231,11 @@ class ProfileActivity : AppCompatActivity() {
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     return@setOnCheckedChangeListener
                 }
-                scheduleQuietZoneWorker()
+                //scheduleQuietZoneWorker()
                 notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", true).apply()
                 Toast.makeText(this@ProfileActivity, "조용한 존 추천 알림이 켜졌습니다.", Toast.LENGTH_SHORT).show()
             } else {
-                cancelQuietZoneWorker()
+                //cancelQuietZoneWorker()
                 notificationPrefs.edit().putBoolean("quiet_zone_notifications_enabled", false).apply()
                 Toast.makeText(this@ProfileActivity, "조용한 존 추천 알림이 꺼졌습니다.", Toast.LENGTH_SHORT).show()
             }
@@ -377,12 +377,10 @@ class ProfileActivity : AppCompatActivity() {
 
                 // 로컬 Worker / SharedPreferences도 맞춰주고 싶으면
                 if (enabled) {
-                    scheduleQuietZoneWorker()
                     notificationPrefs.edit()
                         .putBoolean("quiet_zone_notifications_enabled", true)
                         .apply()
                 } else {
-                    cancelQuietZoneWorker()
                     notificationPrefs.edit()
                         .putBoolean("quiet_zone_notifications_enabled", false)
                         .apply()
@@ -510,11 +508,5 @@ class ProfileActivity : AppCompatActivity() {
         }
     }
 
-    private fun scheduleQuietZoneWorker() {
-        QuietZoneWorker.schedule(this)
-    }
 
-    private fun cancelQuietZoneWorker() {
-        QuietZoneWorker.cancel(this)
-    }
 }
